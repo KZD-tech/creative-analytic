@@ -7,7 +7,7 @@ import { cn } from '@/lib/cn';
 
 const ITEMS = [
   { href: '', label: 'Ringkasan', Icon: BarChart3, exact: true },
-  { href: '/creatives', label: 'Kreatif', Icon: LayoutGrid, exact: false },
+  { href: '/creatives', label: 'Laporan', Icon: LayoutGrid, exact: false },
   { href: '/insights', label: 'Insight', Icon: Lightbulb, exact: false },
   { href: '/compare', label: 'Banding', Icon: Columns3, exact: false },
   { href: '/data', label: 'Data', Icon: Database, exact: false },

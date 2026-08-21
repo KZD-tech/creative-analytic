@@ -39,7 +39,7 @@ export interface DateWindow {
 // ── campaigns ───────────────────────────────────────────────────────────────
 
 export async function listCampaigns(): Promise<Campaign[]> {
-  const { data, error } = await db()
+  const { data, error } = await (await db())
     .from('campaigns')
     .select('*')
     .order('status', { ascending: true })
@@ -49,7 +49,7 @@ export async function listCampaigns(): Promise<Campaign[]> {
 }
 
 export async function getCampaign(id: string): Promise<Campaign | null> {
-  const { data, error } = await db().from('campaigns').select('*').eq('id', id).maybeSingle();
+  const { data, error } = await (await db()).from('campaigns').select('*').eq('id', id).maybeSingle();
   guard(error);
   return (data as Campaign | null) ?? null;
 }
@@ -57,28 +57,35 @@ export async function getCampaign(id: string): Promise<Campaign | null> {
 export async function createCampaign(input: {
   id: string;
   name: string;
+  ownerId: string;
   currency?: string;
   timezone?: string;
 }): Promise<Campaign> {
-  const { data, error } = await db()
+  const supabase = await db();
+
+  // owner_id is what every row-level policy in the schema ultimately checks,
+  // so a campaign created without one would be invisible to its own author.
+  const { data, error } = await supabase
     .from('campaigns')
     .insert({
       id: input.id,
       name: input.name,
+      owner_id: input.ownerId,
       currency: input.currency ?? 'MYR',
       timezone: input.timezone ?? 'Asia/Kuala_Lumpur',
     })
     .select('*')
     .single();
   guard(error);
-  await db().from('benchmarks').upsert({ campaign_id: input.id }, { onConflict: 'campaign_id' });
+
+  await supabase.from('benchmarks').upsert({ campaign_id: input.id }, { onConflict: 'campaign_id' });
   return data as Campaign;
 }
 
 // ── benchmarks ──────────────────────────────────────────────────────────────
 
 export async function getBenchmarks(campaignId: string): Promise<Benchmarks> {
-  const { data, error } = await db()
+  const { data, error } = await (await db())
     .from('benchmarks')
     .select('*')
     .eq('campaign_id', campaignId)
@@ -91,7 +98,7 @@ export async function saveBenchmarks(
   campaignId: string,
   patch: Partial<Benchmarks>,
 ): Promise<Benchmarks> {
-  const { data, error } = await db()
+  const { data, error } = await (await db())
     .from('benchmarks')
     .upsert(
       { ...patch, campaign_id: campaignId, updated_at: new Date().toISOString() },
@@ -109,7 +116,7 @@ export async function getPerformance(
   campaignId: string,
   window: DateWindow,
 ): Promise<PerformanceRow[]> {
-  const { data, error } = await db().rpc('creative_performance', {
+  const { data, error } = await (await db()).rpc('creative_performance', {
     p_campaign_id: campaignId,
     p_from: window.from,
     p_to: window.to,
@@ -122,7 +129,7 @@ export async function getSummary(
   campaignId: string,
   window: DateWindow,
 ): Promise<CampaignSummaryRow> {
-  const { data, error } = await db().rpc('campaign_summary', {
+  const { data, error } = await (await db()).rpc('campaign_summary', {
     p_campaign_id: campaignId,
     p_from: window.from,
     p_to: window.to,
@@ -150,7 +157,7 @@ export async function getDailySeries(
   campaignId: string,
   window: DateWindow,
 ): Promise<DailyRow[]> {
-  const { data, error } = await db().rpc('daily_series', {
+  const { data, error } = await (await db()).rpc('daily_series', {
     p_campaign_id: campaignId,
     p_from: window.from,
     p_to: window.to,
@@ -163,7 +170,7 @@ export async function getCreativeDailySeries(
   creativeId: string,
   window: DateWindow,
 ): Promise<CreativeDailyRow[]> {
-  const { data, error } = await db().rpc('creative_daily_series', {
+  const { data, error } = await (await db()).rpc('creative_daily_series', {
     p_creative_id: creativeId,
     p_from: window.from,
     p_to: window.to,
@@ -173,7 +180,7 @@ export async function getCreativeDailySeries(
 }
 
 export async function getCreative(id: string): Promise<Creative | null> {
-  const { data, error } = await db().from('creatives').select('*').eq('id', id).maybeSingle();
+  const { data, error } = await (await db()).from('creatives').select('*').eq('id', id).maybeSingle();
   guard(error);
   return (data as Creative | null) ?? null;
 }
@@ -181,7 +188,7 @@ export async function getCreative(id: string): Promise<Creative | null> {
 // ── tags ────────────────────────────────────────────────────────────────────
 
 export async function listTags(campaignId: string): Promise<Tag[]> {
-  const { data, error } = await db()
+  const { data, error } = await (await db())
     .from('tags')
     .select('*')
     .or(`campaign_id.eq.${campaignId},campaign_id.is.null`)
@@ -193,7 +200,7 @@ export async function listTags(campaignId: string): Promise<Tag[]> {
 
 /** creativeId → tags, for the whole campaign in one round trip. */
 export async function getTagAssignments(campaignId: string): Promise<Map<string, Tag[]>> {
-  const { data, error } = await db()
+  const { data, error } = await (await db())
     .from('creative_tags')
     .select('creative_id, tags(id, campaign_id, dimension, label, created_at), creatives!inner(campaign_id)')
     .eq('creatives.campaign_id', campaignId);
@@ -215,7 +222,7 @@ export async function upsertTag(
   label: string,
 ): Promise<Tag> {
   const trimmed = label.trim();
-  const existing = await db()
+  const existing = await (await db())
     .from('tags')
     .select('*')
     .eq('campaign_id', campaignId)
@@ -225,7 +232,7 @@ export async function upsertTag(
 
   if (existing.data) return existing.data as Tag;
 
-  const { data, error } = await db()
+  const { data, error } = await (await db())
     .from('tags')
     .insert({ campaign_id: campaignId, dimension, label: trimmed })
     .select('*')
@@ -235,7 +242,7 @@ export async function upsertTag(
 }
 
 export async function setCreativeTags(creativeId: string, tagIds: string[]): Promise<void> {
-  const supabase = db();
+  const supabase = await (await db());
   const { error: deleteError } = await supabase
     .from('creative_tags')
     .delete()
@@ -251,7 +258,7 @@ export async function setCreativeTags(creativeId: string, tagIds: string[]): Pro
 
 export async function addTagToCreatives(tagId: string, creativeIds: string[]): Promise<void> {
   if (creativeIds.length === 0) return;
-  const { error } = await db()
+  const { error } = await (await db())
     .from('creative_tags')
     .upsert(
       creativeIds.map((creative_id) => ({ creative_id, tag_id: tagId })),
@@ -263,7 +270,7 @@ export async function addTagToCreatives(tagId: string, creativeIds: string[]): P
 // ── upload log ──────────────────────────────────────────────────────────────
 
 export async function listBatches(campaignId: string, limit = 25): Promise<UploadBatch[]> {
-  const { data, error } = await db()
+  const { data, error } = await (await db())
     .from('upload_batches')
     .select(
       'id, campaign_id, kind, source, filename, row_count, inserted_count, updated_count, skipped_count, status, message, warnings, snapshot_rows, created_at',
@@ -276,7 +283,7 @@ export async function listBatches(campaignId: string, limit = 25): Promise<Uploa
 }
 
 export async function listSnapshots(campaignId: string): Promise<UploadBatch[]> {
-  const { data, error } = await db()
+  const { data, error } = await (await db())
     .from('upload_batches')
     .select(
       'id, campaign_id, kind, source, filename, row_count, inserted_count, updated_count, skipped_count, status, message, warnings, snapshot_rows, created_at',

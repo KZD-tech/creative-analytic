@@ -21,11 +21,51 @@ data lama.
 | Halaman | Fungsi |
 |---|---|
 | **Ringkasan** | KPI dengan perbandingan tempoh sebelumnya, graf belanja vs hasil, derma harian, kadar funnel (4 panel), ringkasan kebocoran, kreatif teratas |
-| **Kreatif** | Grid kad video 9:16 atau jadual padat. Tapis ikut status/tag/carian, susun ikut 8 metrik, pilih 2–4 untuk dibanding, tag pukal |
-| **Kreatif → butiran** | Video, diagnosis kebocoran + cadangan tindakan, 15 metrik, lengkung keletihan (frekuensi vs CTR), editor tag |
+| **Laporan** | Lapan laporan templat, dropdown kumpulan, pemilih metrik, tiga mod paparan (grid/carta/jadual), tag pukal dan pemilihan untuk banding |
+| **Laporan → butiran** | Video, diagnosis kebocoran + cadangan tindakan, 15 metrik, lengkung keletihan (frekuensi vs CTR), editor tag |
 | **Insight** | Peringkat funnel yang paling banyak makan bajet, senarai paling rugi, breakdown prestasi mengikut tag (hook/format/angle/offer) |
 | **Banding** | 2–4 kreatif sisi-ke-sisi, 17 metrik, nilai terbaik setiap baris ditanda |
 | **Data** | Muat naik CSV, log muat naik, rollback snapshot, tetapan benchmark, kempen baharu |
+
+### Laporan templat
+
+Setiap laporan ialah pandangan berbeza ke atas data yang sama, dengan metrik
+dan susunan lalainya sendiri.
+
+| Laporan | Satu baris ialah | Perlukan |
+|---|---|---|
+| Top Creatives | satu iklan | eksport Ads Manager |
+| Top Landing Pages | satu halaman destinasi (URL dikumpul tanpa UTM) | lajur `Link` |
+| Top Body Copy | satu teks utama, walau dipakai banyak iklan | lajur `Body` |
+| Top Headlines | satu tajuk | lajur `Title` |
+| Top Videos | satu iklan video | CSV pautan video |
+| Top Images | satu iklan imej | CSV pautan video |
+| Top Hooks | satu tag hook, merangkumi semua iklan yang memakainya | tag hook |
+| Video Retention | satu iklan dengan data tontonan | lajur `Video plays at 25%…100%` |
+
+Laporan yang datanya tiada tetap boleh diklik — ia menerangkan lajur mana yang
+perlu ditambah, bukan sekadar memaparkan grid kosong.
+
+**Peraturan nilai hijau.** Metrik yang ada benchmark kempen (ROAS, CTR, CVR,
+hook, hold, kadar LPV) bertukar hijau apabila mencapai benchmark itu — mutlak,
+dan jawapannya sama tanpa mengira apa lagi di skrin. Metrik lain yang ada arah
+&ldquo;lebih baik&rdquo; (CPA, CPM, hasil, derma) hijau apabila berada dalam
+kuartil terbaik hasil yang sedang dipaparkan. Kalau peraturan relatif itu akan
+menyerlahkan **setiap** baris — contohnya semua seri — ia digugurkan, kerana
+menyerlahkan semuanya sama dengan tidak memberitahu apa-apa. Belanja dan
+impresi tidak pernah diserlahkan.
+
+### Akaun
+
+- **Jemputan sahaja.** Pencetus pangkalan data menolak mana-mana pendaftaran
+  yang emelnya tiada dalam senarai jemputan, sama ada melalui kata laluan
+  atau Google. Ini berlaku di dalam pangkalan data, bukan di dalam borang.
+- **Akaun pertama menjadi admin** dan boleh menjemput orang lain di
+  `/settings/team`.
+- **Setiap pengguna nampak kempen sendiri sahaja.** Ini dikuatkuasakan oleh
+  row-level security, bukan oleh kod aplikasi — jadi penapis yang terlupa
+  dalam kod tidak boleh membocorkan kempen orang lain.
+  `supabase/tests/rls.sql` membuktikannya.
 
 ---
 
@@ -38,16 +78,36 @@ berasingan daripada `donor-crm`. Jadual duduk dalam schema **`public`**, yang
 Supabase dedahkan kepada API secara lalai — jadi tiada langkah "Exposed
 schemas", dan Table Editor terus menunjukkan jadual-jadual ini.
 
-Kedua-dua migrasi **sudah dijalankan** pada projek itu — 8 jadual (RLS
-dihidupkan) dan 5 fungsi agregasi. Untuk projek baharu, jalankan fail ini
-mengikut turutan dalam **SQL Editor**:
+Keempat-empat migrasi **sudah dijalankan** pada projek itu — 10 jadual (RLS
+dihidupkan, 11 policy), 5 fungsi agregasi, dan pencetus jemputan. Untuk projek
+baharu, jalankan fail ini mengikut turutan dalam **SQL Editor**:
 
 ```
 supabase/migrations/0001_core_schema.sql
 supabase/migrations/0002_analytics_functions.sql
+supabase/migrations/0003_auth_and_ownership.sql
+supabase/migrations/0004_creative_copy.sql
 ```
 
-### 2. Berkongsi projek dengan aplikasi lain (pilihan)
+### 2. Hidupkan cara log masuk
+
+Supabase Dashboard → **Authentication → Providers**:
+
+- **Email** — hidupkan. Untuk pasukan dalaman, matikan
+  &ldquo;Confirm email&rdquo; supaya akaun terus boleh guna; pintu masuk
+  sebenar ialah senarai jemputan, bukan pengesahan emel.
+- **Google** — hidupkan, tampal Client ID dan Secret dari Google Cloud Console.
+  Dalam Google Cloud, authorised redirect URI ialah
+  `https://<ref>.supabase.co/auth/v1/callback`.
+
+Kemudian **Authentication → URL Configuration** → Site URL: URL aplikasi anda
+(contoh `http://localhost:3000` semasa pembangunan), dan tambah
+`<url>/auth/callback` pada Redirect URLs.
+
+Akaun **pertama** yang mendaftar menjadi admin. Selepas itu, jemput orang lain
+di `/settings/team`.
+
+### 3. Berkongsi projek dengan aplikasi lain (pilihan)
 
 Kalau satu hari projek Supabase ini perlu dikongsi dengan aplikasi lain,
 pindahkan jadual ke schema tersendiri, tetapkan `SUPABASE_SCHEMA` kepada nama
@@ -56,7 +116,7 @@ PostgREST hanya melayan schema yang didedahkan, walaupun dengan service-role
 key. Kalau langkah itu terlepas, dashboard akan memaparkan skrin persediaan
 yang menyebutnya secara khusus.
 
-### 3. Environment variables
+### 4. Environment variables
 
 ```bash
 cp .env.example .env.local
@@ -65,33 +125,47 @@ cp .env.example .env.local
 | Variable | Wajib | Nota |
 |---|---|---|
 | `SUPABASE_URL` | ya | `https://yrihtfugfsodsdseqyoe.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | ya | Dashboard → Settings → API Keys → `service_role`. **Server sahaja** — jangan sekali-kali beri prefix `NEXT_PUBLIC_` |
+| `SUPABASE_ANON_KEY` | ya | Dashboard → Settings → API Keys → `anon` |
+| `SUPABASE_SERVICE_ROLE_KEY` | ya | Dashboard → Settings → API Keys → `service_role` |
 | `SUPABASE_SCHEMA` | tidak | lalai `public`. Set hanya jika jadual dipindahkan ke schema lain |
-| `APP_PASSWORD` | untuk deploy awam | kata laluan kongsi; kosong = dashboard terbuka |
-| `APP_SESSION_SECRET` | jika `APP_PASSWORD` diisi | `openssl rand -base64 32` |
+| `APP_URL` | untuk deploy | asal awam, digunakan untuk redirect Google. Vercel dikesan automatik |
 
-Semua akses Supabase berlaku di server. RLS dihidupkan pada setiap jadual
-**tanpa satu pun policy**, jadi anon key tidak boleh membaca apa-apa — service
-role yang dipegang server sahaja yang boleh masuk.
+**Tiada satu pun bernama `NEXT_PUBLIC_`, dan itu disengajakan.** Log masuk —
+termasuk redirect Google — dipandu dari server action, jadi tiada kredential
+Supabase sampai ke pelayar dan pelayar tidak pernah bercakap terus dengan
+Supabase. Ini disahkan dengan membina versi produksi menggunakan nilai
+sentinel dan mencarinya dalam `.next/static`: sifar padanan.
 
-### 4. Jalankan
+Aplikasi menyambung sebagai **pengguna yang log masuk**, bukan sebagai service
+role. Row-level security yang menentukan baris mana kelihatan. Service-role key
+hanya untuk sistem akaun, tidak pernah untuk data kempen.
+
+### 5. Jalankan
 
 ```bash
 npm install
 npm run dev        # http://localhost:3000
 npm run build      # binaan produksi
-npm test           # 23 ujian unit (parser + enjin metrik)
+npm test           # 30 ujian unit (parser + enjin metrik + peraturan hijau)
 npm run lint
 ```
 
-Untuk mengesahkan sisi SQL terhadap pangkalan data sebenar (ia berjalan dalam
-transaksi yang sentiasa di-rollback):
+Dua ujian SQL mengesahkan sisi pangkalan data. Kedua-duanya berjalan dalam
+transaksi yang sentiasa di-rollback, jadi selamat dijalankan terhadap
+pangkalan data sebenar:
 
 ```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/smoke.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/smoke.sql  # agregasi
+psql "$DATABASE_URL" -f supabase/tests/rls.sql                       # pengasingan
 ```
 
-### 5. Deploy (Vercel)
+`rls.sql` ialah bukti untuk dakwaan keselamatan: ia mencipta dua pengguna,
+memberi satu kempen kepada setiap seorang, kemudian mengesahkan bahawa setiap
+pengguna hanya nampak kempennya sendiri, bahawa fungsi agregasi tidak
+membocorkan kempen orang lain, bahawa menulis ke kempen orang lain ditolak,
+dan bahawa permintaan tanpa log masuk tidak nampak apa-apa.
+
+### 6. Deploy (Vercel)
 
 Import repo, tetapkan environment variables yang sama, deploy. Tiada
 konfigurasi lain diperlukan — semua halaman dirender atas permintaan.
@@ -197,14 +271,19 @@ src/
   app/                    halaman (App Router) + server actions
   components/
     charts/               chart-kit (palet, tooltip, jadual) + graf
-    creatives/            kad, grid, funnel, editor tag
+    reports/              sidebar laporan, pemilih metrik, kad/jadual/carta
+    creatives/            media, funnel, editor tag
     data/                 muat naik, rollback, benchmark
+    nav/                  penukar kempen, julat tarikh, menu akaun
     ui/                   primitif (Card, Badge, StatTile, Notice…)
   lib/
+    auth/                 pembantu sesi (currentUser, requireUser, requireAdmin)
     ingest/               parser CSV + `adapter.ts` (bentuk data agnostik)
-    db/                   client, queries, ingest writer
-    metrics/              derive, benchmarks, diagnose, breakdown, summary
-supabase/migrations/      schema + fungsi agregasi
+    db/                   client berskop pengguna, queries, ingest writer
+    metrics/              derive, benchmarks, diagnose, catalog, rollup
+    reports.ts            takrifan lapan laporan templat
+supabase/migrations/      schema, fungsi, auth + RLS, lajur copy
+supabase/tests/           smoke.sql (agregasi) + rls.sql (pengasingan)
 tests/                    ujian unit parser & enjin metrik
 ```
 

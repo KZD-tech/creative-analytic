@@ -146,3 +146,23 @@ export function toTimestamp(raw: unknown, timeZone: string): string | null {
   instant = guess - zoneOffsetMs(new Date(instant), timeZone);
   return new Date(instant).toISOString();
 }
+
+/**
+ * Groups a destination URL by what actually differs between ads: the host and
+ * path. UTM and click-id parameters are stripped, otherwise every ad looks
+ * like its own landing page and the report says nothing.
+ */
+export function landingKey(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const text = url.trim();
+  if (!text) return null;
+
+  try {
+    const parsed = new URL(text.startsWith('http') ? text : `https://${text}`);
+    const host = parsed.hostname.replace(/^www\./, '');
+    const path = parsed.pathname.replace(/\/+$/, '');
+    return `${host}${path}` || host;
+  } catch {
+    return text.slice(0, 200);
+  }
+}

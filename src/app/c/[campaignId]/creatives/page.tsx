@@ -1,15 +1,14 @@
 import { getBenchmarks, getCampaign, getPerformance, getTagAssignments } from '@/lib/db/queries';
-import { deriveAll } from '@/lib/metrics/derive';
 import { resolveWindow } from '@/lib/window';
 import { load } from '@/lib/db/safe';
 import { SetupNotice } from '@/components/SetupNotice';
-import { CreativeExplorer } from '@/components/creatives/CreativeExplorer';
+import { ReportExplorer } from '@/components/reports/ReportExplorer';
 import { EmptyState } from '@/components/ui/primitives';
 import type { Tag } from '@/types/db';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CreativesPage({
+export default async function ReportsPage({
   params,
   searchParams,
 }: {
@@ -33,6 +32,7 @@ export default async function CreativesPage({
       getBenchmarks(campaignId),
       getTagAssignments(campaignId),
     ]);
+
     return { campaign, performance, benchmarks, tagMap };
   });
 
@@ -44,17 +44,17 @@ export default async function CreativesPage({
   if (performance.length === 0) {
     return (
       <EmptyState title="Belum ada kreatif">
-        Muat naik eksport Ads Manager di tab <strong>Data</strong> untuk mengisi grid ini.
+        Muat naik eksport Ads Manager di tab <strong>Data</strong> untuk mengisi laporan ini.
       </EmptyState>
     );
   }
 
-  const items = deriveAll(performance, benchmarks);
   const tagsByCreative: Record<string, Tag[]> = Object.fromEntries(tagMap);
 
   return (
-    <CreativeExplorer
-      items={items}
+    <ReportExplorer
+      rows={performance}
+      benchmarks={benchmarks}
       tagsByCreative={tagsByCreative}
       currency={campaign.currency}
       campaignId={campaignId}

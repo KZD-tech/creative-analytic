@@ -3,6 +3,7 @@ import test from 'node:test';
 import { parseFbAdsCsv } from '@/lib/ingest/fbAds';
 import { extractAdName, parseConversionsCsv } from '@/lib/ingest/conversions';
 import { classifyMedia, parseMediaLinksCsv, youtubeId } from '@/lib/ingest/mediaLinks';
+import { landingKey } from '@/lib/ingest/normalize';
 
 test('FB parser reads a daily-breakdown export', () => {
   const csv = [
@@ -111,4 +112,36 @@ test('media links parser and YouTube id extraction', () => {
   assert.equal(classifyMedia('https://cdn.example.com/a.mp4').kind, 'video');
   assert.equal(classifyMedia('https://cdn.example.com/a.jpg').kind, 'image');
   assert.equal(classifyMedia(null).kind, 'none');
+});
+
+test('FB parser picks up headline, body copy and destination when present', () => {
+  const csv = [
+    'Ad name,Day,Amount spent (MYR),Impressions,Title,Body,Link',
+    'V1H1,2026-03-01,150,8500,"Derma hari ini","Setiap RM10 memberi makan seorang anak.",https://derma.example.com/ramadan?utm_source=fb&fbclid=xyz',
+  ].join('\n');
+
+  const { items } = parseFbAdsCsv(csv);
+  assert.equal(items[0].headline, 'Derma hari ini');
+  assert.equal(items[0].body_copy, 'Setiap RM10 memberi makan seorang anak.');
+  assert.equal(items[0].landing_url, 'https://derma.example.com/ramadan?utm_source=fb&fbclid=xyz');
+});
+
+test('an export without copy columns warns instead of failing', () => {
+  const csv = ['Ad name,Day,Amount spent (MYR),Impressions', 'V1H1,2026-03-01,150,8500'].join('\n');
+  const { items, warnings } = parseFbAdsCsv(csv);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].headline, null);
+  assert.ok(warnings.some((w) => w.includes('Headlines')));
+});
+
+test('landingKey groups by host and path, ignoring tracking parameters', () => {
+  assert.equal(landingKey('https://www.derma.com/ramadan?utm_source=fb'), 'derma.com/ramadan');
+  assert.equal(landingKey('https://derma.com/ramadan/'), 'derma.com/ramadan');
+  assert.equal(landingKey('derma.com/ramadan?fbclid=1'), 'derma.com/ramadan');
+  // Two ads pointing at the same page group together even with different UTMs.
+  assert.equal(
+    landingKey('https://derma.com/ramadan?utm_campaign=a'),
+    landingKey('https://derma.com/ramadan?utm_campaign=b'),
+  );
+  assert.equal(landingKey(null), null);
 });

@@ -11,6 +11,9 @@ export interface NormalizedAdMetric {
   adset_name: string | null;
   platform_campaign: string | null;
   external_ad_id: string | null;
+  headline: string | null;
+  body_copy: string | null;
+  landing_url: string | null;
   date_start: string;
   date_stop: string;
   spend: number;

@@ -44,6 +44,10 @@ export interface Creative {
   media_url: string | null;
   media_kind: MediaKind;
   thumbnail_url: string | null;
+  headline: string | null;
+  body_copy: string | null;
+  landing_url: string | null;
+  landing_key: string | null;
   notes: string | null;
   first_seen: string | null;
   last_seen: string | null;
@@ -67,6 +71,10 @@ export interface PerformanceRow {
   media_kind: MediaKind;
   thumbnail_url: string | null;
   external_ad_id: string | null;
+  headline: string | null;
+  body_copy: string | null;
+  landing_url: string | null;
+  landing_key: string | null;
   first_seen: string | null;
   last_seen: string | null;
   spend: number;

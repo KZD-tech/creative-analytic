@@ -7,6 +7,8 @@ import { SideNav } from '@/components/nav/SideNav';
 import { CampaignSwitcher } from '@/components/nav/CampaignSwitcher';
 import { RangePicker } from '@/components/nav/RangePicker';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import { AccountMenu } from '@/components/nav/AccountMenu';
+import { requireUser } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +20,7 @@ export default async function CampaignLayout({
   params: Promise<{ campaignId: string }>;
 }) {
   const { campaignId } = await params;
+  const user = await requireUser();
 
   let campaigns;
   let campaign;
@@ -51,8 +54,9 @@ export default async function CampaignLayout({
             <SideNav campaignId={campaign.id} />
           </Suspense>
 
-          <div className="mt-auto hidden lg:block">
+          <div className="mt-auto hidden space-y-3 lg:block">
             <ThemeToggle />
+            <AccountMenu user={user} />
           </div>
         </div>
       </aside>

@@ -26,16 +26,17 @@ export function SetupNotice({ error }: { error: unknown }) {
         <ol className="mt-3 space-y-3 text-[13px] text-ink-2">
           <li className={missingEnv ? 'font-medium text-ink' : undefined}>
             <span className="mr-1.5 font-semibold">1.</span>
-            Isi <code className="rounded bg-surface-2 px-1">SUPABASE_URL</code> dan{' '}
+            Isi <code className="rounded bg-surface-2 px-1">SUPABASE_URL</code>,{' '}
+            <code className="rounded bg-surface-2 px-1">SUPABASE_ANON_KEY</code> dan{' '}
             <code className="rounded bg-surface-2 px-1">SUPABASE_SERVICE_ROLE_KEY</code> dalam{' '}
             <code className="rounded bg-surface-2 px-1">.env.local</code> (atau Environment
             Variables di Vercel).
           </li>
           <li>
             <span className="mr-1.5 font-semibold">2.</span>
-            Jalankan kedua-dua fail dalam{' '}
-            <code className="rounded bg-surface-2 px-1">supabase/migrations/</code> melalui SQL
-            Editor Supabase.
+            Jalankan ketiga-tiga fail dalam{' '}
+            <code className="rounded bg-surface-2 px-1">supabase/migrations/</code> mengikut
+            turutan, melalui SQL Editor Supabase.
           </li>
           {schemaClosed ? (
             <li className="font-medium text-ink">

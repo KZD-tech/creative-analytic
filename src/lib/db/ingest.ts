@@ -1,7 +1,7 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { db } from './client';
-import { adNameKey } from '@/lib/ingest/normalize';
+import { adNameKey, landingKey } from '@/lib/ingest/normalize';
 import { classifyMedia } from '@/lib/ingest/mediaLinks';
 import type {
   MetricSource,
@@ -39,12 +39,22 @@ function chunk<T>(items: T[], size = CHUNK): T[][] {
  * first sight from whichever file mentions them first and enriched afterwards.
  * Returns adNameKey → creative id.
  */
+interface CreativeSeed {
+  ad_name: string;
+  adset_name?: string | null;
+  platform_campaign?: string | null;
+  external_ad_id?: string | null;
+  headline?: string | null;
+  body_copy?: string | null;
+  landing_url?: string | null;
+}
+
 export async function ensureCreatives(
   campaignId: string,
-  ads: { ad_name: string; adset_name?: string | null; platform_campaign?: string | null; external_ad_id?: string | null }[],
+  ads: CreativeSeed[],
 ): Promise<Map<string, string>> {
-  const supabase = db();
-  const byKey = new Map<string, (typeof ads)[number]>();
+  const supabase = await (await db());
+  const byKey = new Map<string, CreativeSeed>();
   for (const ad of ads) {
     const key = adNameKey(ad.ad_name);
     if (!key) continue;
@@ -54,6 +64,9 @@ export async function ensureCreatives(
       adset_name: ad.adset_name ?? existing?.adset_name ?? null,
       platform_campaign: ad.platform_campaign ?? existing?.platform_campaign ?? null,
       external_ad_id: ad.external_ad_id ?? existing?.external_ad_id ?? null,
+      headline: ad.headline ?? existing?.headline ?? null,
+      body_copy: ad.body_copy ?? existing?.body_copy ?? null,
+      landing_url: ad.landing_url ?? existing?.landing_url ?? null,
     });
   }
 
@@ -70,6 +83,10 @@ export async function ensureCreatives(
     adset_name: ad.adset_name ?? null,
     platform_campaign: ad.platform_campaign ?? null,
     external_ad_id: ad.external_ad_id ?? null,
+    headline: ad.headline ?? null,
+    body_copy: ad.body_copy ?? null,
+    landing_url: ad.landing_url ?? null,
+    landing_key: landingKey(ad.landing_url),
   }));
 
   for (const part of chunk(inserts)) {
@@ -80,7 +97,11 @@ export async function ensureCreatives(
   }
 
   const enriched = entries
-    .filter(([, ad]) => ad.adset_name || ad.platform_campaign || ad.external_ad_id)
+    .filter(
+      ([, ad]) =>
+        ad.adset_name || ad.platform_campaign || ad.external_ad_id ||
+        ad.headline || ad.body_copy || ad.landing_url,
+    )
     .map(([key, ad]) => ({
       campaign_id: campaignId,
       ad_name: ad.ad_name.trim(),
@@ -88,6 +109,10 @@ export async function ensureCreatives(
       adset_name: ad.adset_name ?? null,
       platform_campaign: ad.platform_campaign ?? null,
       external_ad_id: ad.external_ad_id ?? null,
+      headline: ad.headline ?? null,
+      body_copy: ad.body_copy ?? null,
+      landing_url: ad.landing_url ?? null,
+      landing_key: landingKey(ad.landing_url),
       updated_at: new Date().toISOString(),
     }));
 
@@ -102,7 +127,7 @@ export async function ensureCreatives(
 }
 
 export async function loadCreativeIndex(campaignId: string): Promise<Map<string, string>> {
-  const supabase = db();
+  const supabase = await (await db());
   const index = new Map<string, string>();
   const pageSize = 1000;
 
@@ -129,7 +154,7 @@ async function openBatch(
   filename: string | null,
   snapshot: unknown[] | null,
 ): Promise<string> {
-  const supabase = db();
+  const supabase = await (await db());
   const keepSnapshot = snapshot !== null && snapshot.length <= MAX_SNAPSHOT_ROWS;
 
   const { data, error } = await supabase
@@ -162,7 +187,7 @@ async function closeBatch(
     warnings?: string[];
   },
 ) {
-  const supabase = db();
+  const supabase = await (await db());
   const { error } = await supabase
     .from('upload_batches')
     .update({ ...patch, warnings: patch.warnings ?? [] })
@@ -172,7 +197,7 @@ async function closeBatch(
 
 /** Keeps the newest N snapshots per kind; older batches stay in the log, payload dropped. */
 async function pruneSnapshots(campaignId: string, kind: BatchKind) {
-  const supabase = db();
+  const supabase = await (await db());
   const { data, error } = await supabase
     .from('upload_batches')
     .select('id')
@@ -195,7 +220,7 @@ async function readAll<T>(
   campaignId: string,
   filters: Record<string, string> = {},
 ): Promise<T[]> {
-  const supabase = db();
+  const supabase = await (await db());
   const out: T[] = [];
   const pageSize = 1000;
 
@@ -247,7 +272,7 @@ export async function writeAdMetrics(
   items: NormalizedAdMetric[],
   opts: { source: MetricSource; filename: string | null; skipped: number; warnings: string[] },
 ): Promise<WriteOutcome> {
-  const supabase = db();
+  const supabase = await (await db());
   const warnings = [...opts.warnings];
 
   const before = await readAll<Record<string, unknown>>('ad_metrics', METRIC_COLUMNS, campaignId, {
@@ -353,7 +378,7 @@ export async function writeAdMetrics(
 
 /** first_seen / last_seen power the "bila iklan ini hidup" strip on the detail page. */
 async function refreshCreativeDates(campaignId: string) {
-  const supabase = db();
+  const supabase = await (await db());
   const { data, error } = await supabase
     .from('ad_metrics')
     .select('creative_id, date_start, date_stop')
@@ -399,7 +424,7 @@ export async function writeConversions(
   items: NormalizedConversion[],
   opts: { filename: string | null; skipped: number; warnings: string[] },
 ): Promise<WriteOutcome> {
-  const supabase = db();
+  const supabase = await (await db());
   const warnings = [...opts.warnings];
 
   const before = await readAll<Record<string, unknown>>(
@@ -502,7 +527,7 @@ export async function writeConversions(
  * every unmatched row, so uploading FB Ads after Onpay still ends up joined.
  */
 export async function rematchConversions(campaignId: string): Promise<number> {
-  const supabase = db();
+  const supabase = await (await db());
   const index = await loadCreativeIndex(campaignId);
 
   const pending = await readAll<{ id: number; matched_ad_name: string | null }>(
@@ -544,7 +569,7 @@ export async function writeMediaLinks(
   items: NormalizedMediaLink[],
   opts: { filename: string | null; skipped: number; warnings: string[] },
 ): Promise<WriteOutcome> {
-  const supabase = db();
+  const supabase = await (await db());
   const batchId = await openBatch(campaignId, 'media_links', 'csv', opts.filename, null);
 
   try {
@@ -609,7 +634,7 @@ export async function writeMediaLinks(
 // ── rollback ────────────────────────────────────────────────────────────────
 
 export async function rollbackBatch(campaignId: string, batchId: string): Promise<number> {
-  const supabase = db();
+  const supabase = await (await db());
 
   const { data: batch, error } = await supabase
     .from('upload_batches')

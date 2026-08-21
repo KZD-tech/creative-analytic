@@ -12,6 +12,7 @@ import {
   writeMediaLinks,
   type WriteOutcome,
 } from '@/lib/db/ingest';
+import { requireUser } from '@/lib/auth/session';
 import {
   addTagToCreatives,
   createCampaign,
@@ -48,7 +49,8 @@ export async function createCampaignAction(_prev: ActionResult | null, formData:
   }
 
   try {
-    const campaign = await createCampaign({ id, name, currency, timezone });
+    const user = await requireUser();
+    const campaign = await createCampaign({ id, name, ownerId: user.id, currency, timezone });
     revalidatePath('/', 'layout');
     return { ok: true, message: `Kempen "${campaign.name}" berjaya dibuat.` };
   } catch (error) {

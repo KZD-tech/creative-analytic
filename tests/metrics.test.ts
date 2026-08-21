@@ -4,6 +4,7 @@ import { deriveCreative, ratio } from '@/lib/metrics/derive';
 import { withDefaults, grade } from '@/lib/metrics/benchmarks';
 import { diagnose, leakSummary } from '@/lib/metrics/diagnose';
 import { breakdownByDimension } from '@/lib/metrics/breakdown';
+import { highlightRules, isHighlighted, METRICS } from '@/lib/metrics/catalog';
 import type { PerformanceRow, Tag } from '@/types/db';
 
 const B = withDefaults('demo', null);
@@ -18,6 +19,10 @@ function row(patch: Partial<PerformanceRow> = {}): PerformanceRow {
     media_kind: 'none',
     thumbnail_url: null,
     external_ad_id: null,
+    headline: null,
+    body_copy: null,
+    landing_url: null,
+    landing_key: null,
     first_seen: null,
     last_seen: null,
     spend: 1000,
@@ -158,4 +163,43 @@ test('untagged creatives are bucketed separately and sink to the bottom', () => 
   assert.equal(rows[0].label, 'Soalan');
   assert.equal(rows[1].label, 'Tiada tag');
   assert.equal(rows[1].spend, 9000);
+});
+
+test('a relative highlight that would flag every row is dropped', () => {
+  // Three creatives, all with exactly one conversion: "top quartile" is
+  // meaningless here, so nothing should be highlighted.
+  const tied = ['a', 'b', 'c'].map((id) =>
+    deriveCreative(row({ creative_id: id, conversions: 1, revenue: 100 }), B),
+  );
+  const rules = highlightRules(tied, ['conversions'], B);
+  assert.equal(rules.conversions.kind, 'none');
+  assert.equal(isHighlighted(METRICS.conversions, tied[0], rules.conversions), false);
+});
+
+test('a relative highlight survives when rows actually differ', () => {
+  const spread = [10, 5, 3, 1].map((n, i) =>
+    deriveCreative(row({ creative_id: `c${i}`, conversions: n, revenue: 100 }), B),
+  );
+  const rules = highlightRules(spread, ['conversions'], B);
+  assert.equal(rules.conversions.kind, 'quartile');
+  assert.equal(isHighlighted(METRICS.conversions, spread[0], rules.conversions), true);
+  assert.equal(isHighlighted(METRICS.conversions, spread[3], rules.conversions), false);
+});
+
+test('benchmark highlights stay absolute even when every row clears them', () => {
+  // All three beat the ROAS benchmark. That is a real result, not a tie, so it
+  // must keep showing — unlike the relative rule above.
+  const winners = ['a', 'b', 'c'].map((id) =>
+    deriveCreative(row({ creative_id: id, spend: 100, revenue: 500 }), B),
+  );
+  const rules = highlightRules(winners, ['roas'], B);
+  assert.equal(rules.roas.kind, 'benchmark');
+  assert.ok(winners.every((w) => isHighlighted(METRICS.roas, w, rules.roas)));
+});
+
+test('spend and impressions are never highlighted', () => {
+  const rows = [1, 2, 3, 4].map((n) => deriveCreative(row({ creative_id: `c${n}`, spend: n * 100 }), B));
+  const rules = highlightRules(rows, ['spend', 'impressions'], B);
+  assert.equal(rules.spend.kind, 'none');
+  assert.equal(rules.impressions.kind, 'none');
 });

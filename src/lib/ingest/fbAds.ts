@@ -46,6 +46,11 @@ const A = {
     'conversion_value',
   ],
   roas: ['purchase_roas_return_on_ad_spend', 'purchase_roas', 'website_purchase_roas'],
+  // Optional creative copy. Ads Manager names these differently depending on
+  // the export preset, and older presets omit them entirely.
+  headline: ['title', 'headline', 'ad_headline', 'tajuk'],
+  bodyCopy: ['body', 'primary_text', 'ad_body', 'ad_creative_body', 'teks_utama'],
+  landingUrl: ['link', 'website_url', 'destination_url', 'link_url', 'ad_link'],
 };
 
 export function parseFbAdsCsv(text: string): IngestResult<NormalizedAdMetric> {
@@ -123,6 +128,9 @@ export function parseFbAdsCsv(text: string): IngestResult<NormalizedAdMetric> {
       adset_name: pick(row, A.adsetName)?.trim() ?? null,
       platform_campaign: pick(row, A.campaignName)?.trim() ?? null,
       external_ad_id: pick(row, A.adId)?.trim() ?? null,
+      headline: pick(row, A.headline)?.trim() ?? null,
+      body_copy: pick(row, A.bodyCopy)?.trim() ?? null,
+      landing_url: pick(row, A.landingUrl)?.trim() ?? null,
       date_start: start,
       date_stop: stop < start ? start : stop,
       spend,
@@ -150,6 +158,11 @@ export function parseFbAdsCsv(text: string): IngestResult<NormalizedAdMetric> {
   }
   if (hasDailyBreakdown) {
     warnings.push('Eksport harian dikesan — graf trend akan tersedia untuk tempoh ini.');
+  }
+  if (!hasAnyColumn(rows, [...A.headline, ...A.bodyCopy, ...A.landingUrl])) {
+    warnings.push(
+      'Tiada lajur Title, Body atau Link — laporan Headlines, Body Copy dan Landing Pages akan kosong. Tambah lajur itu dalam eksport Ads Manager untuk mengaktifkannya.',
+    );
   }
 
   return { items, warnings, skipped };

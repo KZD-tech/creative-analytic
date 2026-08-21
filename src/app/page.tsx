@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { listCampaigns } from '@/lib/db/queries';
+import { requireUser } from '@/lib/auth/session';
 import { SetupNotice } from '@/components/SetupNotice';
 import { NewCampaignForm } from '@/components/NewCampaignForm';
 import { Card } from '@/components/ui/primitives';
@@ -7,6 +8,8 @@ import { Card } from '@/components/ui/primitives';
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
+  const user = await requireUser();
+
   let campaigns;
   try {
     campaigns = await listCampaigns();
@@ -21,7 +24,8 @@ export default async function HomePage() {
     <div className="mx-auto max-w-xl px-6 py-16">
       <h1 className="text-lg font-semibold">Creative Analytic</h1>
       <p className="mt-1 text-[13px] text-ink-2">
-        Belum ada kempen. Buat satu untuk mula memuat naik data Meta Ads dan derma.
+        Selamat datang, {user.fullName || user.email}. Belum ada kempen — buat satu untuk mula
+        memuat naik data Meta Ads dan derma.
       </p>
       <Card className="mt-6 px-5 py-5">
         <NewCampaignForm />
