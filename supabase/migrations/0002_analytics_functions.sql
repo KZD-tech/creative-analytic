@@ -11,19 +11,19 @@
 -- If a creative has daily rows in the window we use only those; otherwise we
 -- fall back to its range rows. Without this, uploading a daily-breakdown export
 -- on top of a summary export would double-count every metric.
-create or replace function creative.scoped_metrics(
+create or replace function public.scoped_metrics(
   p_campaign_id text,
   p_from        date default null,
   p_to          date default null
 )
-returns setof creative.ad_metrics
+returns setof public.ad_metrics
 language sql
 stable
 set search_path = ''
 as $$
   with scoped as (
     select m.*
-      from creative.ad_metrics m
+      from public.ad_metrics m
      where m.campaign_id = p_campaign_id
        and (p_from is null or m.date_stop  >= p_from)
        and (p_to   is null or m.date_start <= p_to)
@@ -41,7 +41,7 @@ as $$
 $$;
 
 -- ── per-creative totals for a window ───────────────────────────────────────
-create or replace function creative.creative_performance(
+create or replace function public.creative_performance(
   p_campaign_id text,
   p_from        date default null,
   p_to          date default null
@@ -98,14 +98,14 @@ as $$
            sum(s.results)            as results,
            sum(s.platform_revenue)   as platform_revenue,
            count(*) filter (where s.granularity = 'day' and s.impressions > 0) as active_days
-      from creative.scoped_metrics(p_campaign_id, p_from, p_to) s
+      from public.scoped_metrics(p_campaign_id, p_from, p_to) s
      group by s.creative_id
   ),
   c as (
     select v.creative_id,
            count(*)                    as conversions,
            coalesce(sum(v.amount), 0)  as revenue
-      from creative.conversions v
+      from public.conversions v
      where v.campaign_id = p_campaign_id
        and v.creative_id is not null
        and (p_from is null or v.occurred_at >= p_from::timestamptz)
@@ -145,7 +145,7 @@ as $$
          coalesce(c.conversions, 0)::bigint,
          coalesce(c.revenue, 0)::numeric,
          coalesce(m.active_days, 0)::integer
-    from creative.creatives cr
+    from public.creatives cr
     left join m on m.creative_id = cr.id
     left join c on c.creative_id = cr.id
    where cr.campaign_id = p_campaign_id
@@ -156,7 +156,7 @@ $$;
 -- Spend-side numbers only exist for days that were uploaded with a daily
 -- breakdown; conversion-side numbers always do, because donations carry a
 -- timestamp. Both are returned so the UI can say which half it is missing.
-create or replace function creative.daily_series(
+create or replace function public.daily_series(
   p_campaign_id text,
   p_from        date default null,
   p_to          date default null
@@ -178,7 +178,7 @@ set search_path = ''
 as $$
   with tz as (
     select coalesce(c.timezone, 'Asia/Kuala_Lumpur') as name
-      from creative.campaigns c
+      from public.campaigns c
      where c.id = p_campaign_id
   ),
   ads as (
@@ -189,7 +189,7 @@ as $$
            sum(s.landing_page_views) as landing_page_views,
            sum(s.video_3s_views)     as video_3s_views,
            sum(s.reach)              as reach
-      from creative.scoped_metrics(p_campaign_id, p_from, p_to) s
+      from public.scoped_metrics(p_campaign_id, p_from, p_to) s
      where s.granularity = 'day'
      group by s.date_start
   ),
@@ -197,7 +197,7 @@ as $$
     select (v.occurred_at at time zone (select name from tz))::date as day,
            count(*)                   as conversions,
            coalesce(sum(v.amount), 0) as revenue
-      from creative.conversions v
+      from public.conversions v
      where v.campaign_id = p_campaign_id
        and (p_from is null or v.occurred_at >= p_from::timestamptz)
        and (p_to   is null or v.occurred_at <  (p_to + 1)::timestamptz)
@@ -218,7 +218,7 @@ as $$
 $$;
 
 -- ── daily series for a single creative (detail page + fatigue curve) ───────
-create or replace function creative.creative_daily_series(
+create or replace function public.creative_daily_series(
   p_creative_id uuid,
   p_from        date default null,
   p_to          date default null
@@ -243,8 +243,8 @@ set search_path = ''
 as $$
   with tz as (
     select coalesce(c.timezone, 'Asia/Kuala_Lumpur') as name
-      from creative.creatives cr
-      join creative.campaigns c on c.id = cr.campaign_id
+      from public.creatives cr
+      join public.campaigns c on c.id = cr.campaign_id
      where cr.id = p_creative_id
   ),
   ads as (
@@ -258,7 +258,7 @@ as $$
            sum(m.landing_page_views) as landing_page_views,
            sum(m.video_3s_views)     as video_3s_views,
            sum(m.video_thruplays)    as video_thruplays
-      from creative.ad_metrics m
+      from public.ad_metrics m
      where m.creative_id = p_creative_id
        and m.granularity = 'day'
        and (p_from is null or m.date_start >= p_from)
@@ -269,7 +269,7 @@ as $$
     select (v.occurred_at at time zone (select name from tz))::date as day,
            count(*)                   as conversions,
            coalesce(sum(v.amount), 0) as revenue
-      from creative.conversions v
+      from public.conversions v
      where v.creative_id = p_creative_id
        and (p_from is null or v.occurred_at >= p_from::timestamptz)
        and (p_to   is null or v.occurred_at <  (p_to + 1)::timestamptz)
@@ -293,7 +293,7 @@ as $$
 $$;
 
 -- ── campaign-level roll-up (KPI row), one round trip ───────────────────────
-create or replace function creative.campaign_summary(
+create or replace function public.campaign_summary(
   p_campaign_id text,
   p_from        date default null,
   p_to          date default null
@@ -325,11 +325,11 @@ as $$
            count(distinct s.creative_id)          as creative_count,
            min(s.date_start)                      as first_day,
            max(s.date_stop)                       as last_day
-      from creative.scoped_metrics(p_campaign_id, p_from, p_to) s
+      from public.scoped_metrics(p_campaign_id, p_from, p_to) s
   ),
   c as (
     select count(*) as conversions, coalesce(sum(v.amount), 0) as revenue
-      from creative.conversions v
+      from public.conversions v
      where v.campaign_id = p_campaign_id
        and (p_from is null or v.occurred_at >= p_from::timestamptz)
        and (p_to   is null or v.occurred_at <  (p_to + 1)::timestamptz)
@@ -348,8 +348,17 @@ as $$
     from m cross join c;
 $$;
 
-grant execute on function creative.scoped_metrics(text, date, date)         to service_role;
-grant execute on function creative.creative_performance(text, date, date)   to service_role;
-grant execute on function creative.daily_series(text, date, date)           to service_role;
-grant execute on function creative.creative_daily_series(uuid, date, date)  to service_role;
-grant execute on function creative.campaign_summary(text, date, date)       to service_role;
+-- Postgres grants EXECUTE to PUBLIC on every new function, which in an exposed
+-- schema means anon could call each one as an RPC endpoint. They would hit RLS
+-- and get nothing, but an endpoint that should not exist is better closed.
+revoke execute on function public.scoped_metrics(text, date, date)         from public;
+revoke execute on function public.creative_performance(text, date, date)   from public;
+revoke execute on function public.daily_series(text, date, date)           from public;
+revoke execute on function public.creative_daily_series(uuid, date, date)  from public;
+revoke execute on function public.campaign_summary(text, date, date)       from public;
+
+grant execute on function public.scoped_metrics(text, date, date)         to service_role;
+grant execute on function public.creative_performance(text, date, date)   to service_role;
+grant execute on function public.daily_series(text, date, date)           to service_role;
+grant execute on function public.creative_daily_series(uuid, date, date)  to service_role;
+grant execute on function public.campaign_summary(text, date, date)       to service_role;

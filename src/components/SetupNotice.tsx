@@ -5,6 +5,9 @@ export function SetupNotice({ error }: { error: unknown }) {
   const message = error instanceof Error ? error.message : String(error);
   const missingEnv = message.includes('Env yang tiada');
   const schemaClosed = message.includes('Exposed schemas');
+  // The error carries the schema it actually tried, which is the one the
+  // reader has to act on — not whatever the docs happen to name.
+  const schema = /Skema "([^"]+)"/.exec(message)?.[1] ?? 'public';
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-16">
@@ -34,12 +37,28 @@ export function SetupNotice({ error }: { error: unknown }) {
             <code className="rounded bg-surface-2 px-1">supabase/migrations/</code> melalui SQL
             Editor Supabase.
           </li>
-          <li className={schemaClosed ? 'font-medium text-ink' : undefined}>
-            <span className="mr-1.5 font-semibold">3.</span>
-            Supabase Dashboard → Settings → API → <strong>Exposed schemas</strong> → tambah{' '}
-            <code className="rounded bg-surface-2 px-1">creative</code>. Tanpa langkah ini
-            PostgREST tidak akan hantar sebarang data, walaupun dengan service-role key.
-          </li>
+          {schemaClosed ? (
+            <li className="font-medium text-ink">
+              <span className="mr-1.5 font-semibold">3.</span>
+              {schema === 'public' ? (
+                <>
+                  Schema <code className="rounded bg-surface-2 px-1">public</code> sepatutnya
+                  terdedah secara lalai. Semak Supabase Dashboard → Settings → API →{' '}
+                  <strong>Exposed schemas</strong> dan pastikan{' '}
+                  <code className="rounded bg-surface-2 px-1">public</code> ada dalam senarai.
+                </>
+              ) : (
+                <>
+                  <code className="rounded bg-surface-2 px-1">SUPABASE_SCHEMA</code> ditetapkan
+                  kepada <code className="rounded bg-surface-2 px-1">{schema}</code>. Sama ada
+                  buang pemboleh ubah itu (jadual berada dalam{' '}
+                  <code className="rounded bg-surface-2 px-1">public</code>), atau tambah{' '}
+                  <code className="rounded bg-surface-2 px-1">{schema}</code> di Supabase
+                  Dashboard → Settings → API → <strong>Exposed schemas</strong>.
+                </>
+              )}
+            </li>
+          ) : null}
         </ol>
       </Card>
 

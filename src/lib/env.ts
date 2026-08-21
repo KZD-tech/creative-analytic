@@ -10,7 +10,10 @@ type EnvState =
 export function readSupabaseEnv(): EnvState {
   const url = process.env.SUPABASE_URL?.trim() ?? '';
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? '';
-  const schema = process.env.SUPABASE_SCHEMA?.trim() || 'creative';
+  // `public` is exposed to PostgREST out of the box. Override this only when
+  // the project is shared with another app, and expose that schema in the
+  // Supabase dashboard when you do.
+  const schema = process.env.SUPABASE_SCHEMA?.trim() || 'public';
 
   const missing: string[] = [];
   if (!url) missing.push('SUPABASE_URL');

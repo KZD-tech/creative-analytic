@@ -26,7 +26,7 @@ export class SchemaNotExposedError extends Error {
 function guard(error: { message?: string; code?: string } | null) {
   if (!error) return;
   if (isSchemaNotExposed(error)) {
-    throw new SchemaNotExposedError(process.env.SUPABASE_SCHEMA?.trim() || 'creative');
+    throw new SchemaNotExposedError(process.env.SUPABASE_SCHEMA?.trim() || 'public');
   }
   throw new Error(error.message ?? 'Ralat Supabase tidak diketahui');
 }

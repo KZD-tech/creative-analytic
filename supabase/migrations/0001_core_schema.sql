@@ -1,20 +1,17 @@
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Creative Analytic — core schema
 --
--- Everything lives in a dedicated `creative` schema so it never collides with
--- an existing `public` schema (e.g. a donor CRM in the same project).
+-- Lives in `public` because this Supabase project is dedicated to the
+-- dashboard. `public` is exposed to PostgREST by default, so there is no
+-- "Exposed schemas" step and the Table Editor opens on these tables directly.
 --
--- ONE-TIME MANUAL STEP after running this migration:
---   Supabase Dashboard → Settings → API → "Exposed schemas" → add `creative`
--- PostgREST only routes to exposed schemas, service-role key included.
+-- If you ever need to share a project with another app, move these objects to
+-- their own schema, set SUPABASE_SCHEMA to its name, and add that name under
+-- Settings → API → Exposed schemas.
 -- ═══════════════════════════════════════════════════════════════════════════
 
-create schema if not exists creative;
-
-grant usage on schema creative to anon, authenticated, service_role;
-
 -- ── campaigns ──────────────────────────────────────────────────────────────
-create table if not exists creative.campaigns (
+create table if not exists public.campaigns (
   id          text primary key
               check (id ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
   name        text        not null,
@@ -28,9 +25,9 @@ create table if not exists creative.campaigns (
 );
 
 -- ── creatives (one row per ad, source-agnostic identity) ───────────────────
-create table if not exists creative.creatives (
+create table if not exists public.creatives (
   id                uuid primary key default gen_random_uuid(),
-  campaign_id       text not null references creative.campaigns(id) on delete cascade,
+  campaign_id       text not null references public.campaigns(id) on delete cascade,
   ad_name           text not null,
   ad_name_key       text not null,          -- normalised, used for matching
   adset_name        text,
@@ -49,13 +46,13 @@ create table if not exists creative.creatives (
 );
 
 create unique index if not exists creatives_external_ad_id_key
-  on creative.creatives (campaign_id, external_ad_id)
+  on public.creatives (campaign_id, external_ad_id)
   where external_ad_id is not null;
 
 -- ── tags (hook / format / angle / offer / …) ───────────────────────────────
-create table if not exists creative.tags (
+create table if not exists public.tags (
   id          uuid primary key default gen_random_uuid(),
-  campaign_id text references creative.campaigns(id) on delete cascade,
+  campaign_id text references public.campaigns(id) on delete cascade,
   dimension   text not null
               check (dimension in ('hook', 'format', 'angle', 'offer', 'persona', 'cta', 'custom')),
   label       text not null,
@@ -63,19 +60,19 @@ create table if not exists creative.tags (
 );
 
 create unique index if not exists tags_scope_key
-  on creative.tags (coalesce(campaign_id, '*'), dimension, lower(label));
+  on public.tags (coalesce(campaign_id, '*'), dimension, lower(label));
 
-create table if not exists creative.creative_tags (
-  creative_id uuid not null references creative.creatives(id) on delete cascade,
-  tag_id      uuid not null references creative.tags(id) on delete cascade,
+create table if not exists public.creative_tags (
+  creative_id uuid not null references public.creatives(id) on delete cascade,
+  tag_id      uuid not null references public.tags(id) on delete cascade,
   created_at  timestamptz not null default now(),
   primary key (creative_id, tag_id)
 );
 
 -- ── ingestion batches (also doubles as the upload log + rollback store) ────
-create table if not exists creative.upload_batches (
+create table if not exists public.upload_batches (
   id              uuid primary key default gen_random_uuid(),
-  campaign_id     text not null references creative.campaigns(id) on delete cascade,
+  campaign_id     text not null references public.campaigns(id) on delete cascade,
   kind            text not null
                   check (kind in ('fb_ads', 'conversions', 'media_links', 'meta_api', 'rollback')),
   source          text not null default 'csv'
@@ -96,23 +93,23 @@ create table if not exists creative.upload_batches (
 );
 
 create index if not exists upload_batches_campaign_created_idx
-  on creative.upload_batches (campaign_id, created_at desc);
+  on public.upload_batches (campaign_id, created_at desc);
 
 -- ── ad metrics (the source-agnostic fact table) ────────────────────────────
 -- One row per creative per reporting window per source.
 -- date_start = date_stop  → a daily row (enables trends)
 -- date_start < date_stop  → an aggregate row for a reporting range
-create table if not exists creative.ad_metrics (
+create table if not exists public.ad_metrics (
   id                  bigint generated always as identity primary key,
-  campaign_id         text not null references creative.campaigns(id) on delete cascade,
-  creative_id         uuid not null references creative.creatives(id) on delete cascade,
+  campaign_id         text not null references public.campaigns(id) on delete cascade,
+  creative_id         uuid not null references public.creatives(id) on delete cascade,
   date_start          date not null,
   date_stop           date not null,
   granularity         text generated always as
                       (case when date_start = date_stop then 'day' else 'range' end) stored,
   source              text not null default 'csv'
                       check (source in ('csv', 'meta_api')),
-  batch_id            uuid references creative.upload_batches(id) on delete set null,
+  batch_id            uuid references public.upload_batches(id) on delete set null,
 
   spend               numeric(14, 2) not null default 0,
   impressions         bigint  not null default 0,
@@ -139,17 +136,17 @@ create table if not exists creative.ad_metrics (
 );
 
 create index if not exists ad_metrics_campaign_window_idx
-  on creative.ad_metrics (campaign_id, date_start, date_stop);
+  on public.ad_metrics (campaign_id, date_start, date_stop);
 create index if not exists ad_metrics_batch_idx
-  on creative.ad_metrics (batch_id);
+  on public.ad_metrics (batch_id);
 
 -- ── conversions (donations / purchases) ────────────────────────────────────
 -- Deliberately holds NO donor PII: creative analytics never needs a name or an
 -- email, and keeping them out means this schema is not a second copy of the CRM.
-create table if not exists creative.conversions (
+create table if not exists public.conversions (
   id               bigint generated always as identity primary key,
-  campaign_id      text not null references creative.campaigns(id) on delete cascade,
-  creative_id      uuid references creative.creatives(id) on delete set null,
+  campaign_id      text not null references public.campaigns(id) on delete cascade,
+  creative_id      uuid references public.creatives(id) on delete set null,
   external_id      text,                  -- receipt / transaction number, as received
   -- Stable identity for de-duplication. Falls back to a digest of the row's
   -- own content when the export carries no receipt number, so re-uploading the
@@ -164,22 +161,22 @@ create table if not exists creative.conversions (
                    check (match_method in ('external_id', 'exact', 'normalized', 'fuzzy', 'unmatched')),
   source           text not null default 'csv'
                    check (source in ('csv', 'meta_api', 'manual')),
-  batch_id         uuid references creative.upload_batches(id) on delete set null,
+  batch_id         uuid references public.upload_batches(id) on delete set null,
   created_at       timestamptz not null default now()
 );
 
 create unique index if not exists conversions_dedupe_key
-  on creative.conversions (campaign_id, source, dedupe_key);
+  on public.conversions (campaign_id, source, dedupe_key);
 create index if not exists conversions_campaign_time_idx
-  on creative.conversions (campaign_id, occurred_at);
+  on public.conversions (campaign_id, occurred_at);
 create index if not exists conversions_creative_idx
-  on creative.conversions (creative_id);
+  on public.conversions (creative_id);
 create index if not exists conversions_batch_idx
-  on creative.conversions (batch_id);
+  on public.conversions (batch_id);
 
 -- ── per-campaign benchmark thresholds (drive the funnel colours + diagnosis) ─
-create table if not exists creative.benchmarks (
-  campaign_id    text primary key references creative.campaigns(id) on delete cascade,
+create table if not exists public.benchmarks (
+  campaign_id    text primary key references public.campaigns(id) on delete cascade,
   hook_rate_good numeric not null default 0.20,
   hook_rate_ok   numeric not null default 0.15,
   hold_rate_good numeric not null default 0.05,
@@ -197,21 +194,24 @@ create table if not exists creative.benchmarks (
 );
 
 -- ── row level security: locked shut. All access is server-side service-role. ─
-alter table creative.campaigns      enable row level security;
-alter table creative.creatives      enable row level security;
-alter table creative.tags           enable row level security;
-alter table creative.creative_tags  enable row level security;
-alter table creative.upload_batches enable row level security;
-alter table creative.ad_metrics     enable row level security;
-alter table creative.conversions    enable row level security;
-alter table creative.benchmarks     enable row level security;
+alter table public.campaigns      enable row level security;
+alter table public.creatives      enable row level security;
+alter table public.tags           enable row level security;
+alter table public.creative_tags  enable row level security;
+alter table public.upload_batches enable row level security;
+alter table public.ad_metrics     enable row level security;
+alter table public.conversions    enable row level security;
+alter table public.benchmarks     enable row level security;
 
--- No policies are created on purpose: anon and authenticated get nothing.
--- service_role bypasses RLS, and only the Next.js server holds that key.
-grant select, insert, update, delete on all tables in schema creative to service_role;
-grant usage, select on all sequences in schema creative to service_role;
+-- No policies are created on purpose: anon and authenticated reach nothing
+-- through PostgREST. service_role bypasses RLS, and only the Next.js server
+-- holds that key. Grants are named per table rather than schema-wide so this
+-- migration can never widen access to something else living in `public`.
+grant select, insert, update, delete on
+  public.campaigns, public.creatives, public.tags, public.creative_tags,
+  public.upload_batches, public.ad_metrics, public.conversions, public.benchmarks
+  to service_role;
 
-alter default privileges in schema creative
-  grant select, insert, update, delete on tables to service_role;
-alter default privileges in schema creative
-  grant usage, select on sequences to service_role;
+grant usage, select on
+  public.ad_metrics_id_seq, public.conversions_id_seq
+  to service_role;

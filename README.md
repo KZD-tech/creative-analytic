@@ -34,25 +34,27 @@ data lama.
 ### 1. Projek Supabase
 
 Projek yang digunakan: **`creative-analytic`** (`yrihtfugfsodsdseqyoe`),
-berasingan daripada `donor-crm`. Skema duduk dalam schema bernama `creative`,
-bukan `public`.
+berasingan daripada `donor-crm`. Jadual duduk dalam schema **`public`**, yang
+Supabase dedahkan kepada API secara lalai — jadi tiada langkah "Exposed
+schemas", dan Table Editor terus menunjukkan jadual-jadual ini.
 
 Kedua-dua migrasi **sudah dijalankan** pada projek itu — 8 jadual (RLS
 dihidupkan) dan 5 fungsi agregasi. Untuk projek baharu, jalankan fail ini
 mengikut turutan dalam **SQL Editor**:
 
 ```
-supabase/migrations/0001_creative_schema.sql
+supabase/migrations/0001_core_schema.sql
 supabase/migrations/0002_analytics_functions.sql
 ```
 
-### 2. Dedahkan schema kepada API  ← **paling kerap terlepas**
+### 2. Berkongsi projek dengan aplikasi lain (pilihan)
 
-Supabase Dashboard → **Settings → API → Exposed schemas** → tambah `creative`.
-
-PostgREST hanya melayan schema yang didedahkan. Tanpa langkah ini setiap
-permintaan gagal, walaupun dengan service-role key. Dashboard akan mengesan
-keadaan ini dan memaparkan skrin persediaan dengan mesej yang jelas.
+Kalau satu hari projek Supabase ini perlu dikongsi dengan aplikasi lain,
+pindahkan jadual ke schema tersendiri, tetapkan `SUPABASE_SCHEMA` kepada nama
+itu, dan tambah nama itu di Dashboard → Settings → API → **Exposed schemas**.
+PostgREST hanya melayan schema yang didedahkan, walaupun dengan service-role
+key. Kalau langkah itu terlepas, dashboard akan memaparkan skrin persediaan
+yang menyebutnya secara khusus.
 
 ### 3. Environment variables
 
@@ -64,7 +66,7 @@ cp .env.example .env.local
 |---|---|---|
 | `SUPABASE_URL` | ya | `https://yrihtfugfsodsdseqyoe.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | ya | Dashboard → Settings → API Keys → `service_role`. **Server sahaja** — jangan sekali-kali beri prefix `NEXT_PUBLIC_` |
-| `SUPABASE_SCHEMA` | tidak | lalai `creative` |
+| `SUPABASE_SCHEMA` | tidak | lalai `public`. Set hanya jika jadual dipindahkan ke schema lain |
 | `APP_PASSWORD` | untuk deploy awam | kata laluan kongsi; kosong = dashboard terbuka |
 | `APP_SESSION_SECRET` | jika `APP_PASSWORD` diisi | `openssl rand -base64 32` |
 
