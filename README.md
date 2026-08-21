@@ -135,6 +135,62 @@ pada Redirect URLs.
 Akaun **pertama** yang mendaftar menjadi admin. Selepas itu, jemput orang lain
 di `/settings/team`.
 
+<details>
+<summary>Mencipta akaun pertama terus dalam pangkalan data (fallback)</summary>
+
+Cara biasa ialah mendaftar melalui aplikasi, atau Supabase Dashboard →
+Authentication → Users → Add user. Kalau kedua-duanya tidak tersedia, akaun
+boleh dicipta terus melalui SQL Editor:
+
+```sql
+with new_user as (
+  insert into auth.users (
+    instance_id, id, aud, role, email, encrypted_password,
+    email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+    -- GoTrue membaca lajur token ini sebagai Go string; NULL di sini akan
+    -- menggagalkan log masuk dengan "converting NULL to string is unsupported".
+    confirmation_token, recovery_token, email_change_token_new, email_change,
+    email_change_token_current, reauthentication_token,
+    phone_change, phone_change_token,
+    created_at, updated_at
+  ) values (
+    '00000000-0000-0000-0000-000000000000', gen_random_uuid(),
+    'authenticated', 'authenticated',
+    'nama@syarikat.com',
+    extensions.crypt('kata-laluan-anda', extensions.gen_salt('bf')),
+    now(),
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"full_name":"Nama Penuh"}'::jsonb,
+    '', '', '', '', '', '', '', '',
+    now(), now()
+  )
+  returning id, email
+)
+insert into auth.identities (
+  id, user_id, provider_id, identity_data, provider,
+  last_sign_in_at, created_at, updated_at
+)
+select gen_random_uuid(), nu.id, nu.id::text,
+       jsonb_build_object('sub', nu.id::text, 'email', nu.email,
+                          'email_verified', true, 'phone_verified', false),
+       'email', now(), now(), now()
+from new_user nu;
+```
+
+Sahkan kata laluan benar-benar sah — ini pengiraan yang sama dilakukan GoTrue
+semasa log masuk:
+
+```sql
+select email,
+       encrypted_password = extensions.crypt('kata-laluan-anda', encrypted_password) as sah
+  from auth.users where email = 'nama@syarikat.com';
+```
+
+Pencetus jemputan tetap terpakai: kalau `public.profiles` sudah tidak kosong,
+emel itu perlu ada dalam `public.invites` dahulu.
+
+</details>
+
 ### 3. Berkongsi projek dengan aplikasi lain (pilihan)
 
 Kalau satu hari projek Supabase ini perlu dikongsi dengan aplikasi lain,
