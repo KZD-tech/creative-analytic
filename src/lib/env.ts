@@ -25,11 +25,28 @@ export function readSupabaseEnv(): EnvState {
   return { ok: true, url, anonKey, serviceKey: serviceKey || null, schema };
 }
 
-/** Where Supabase sends the browser back after a Google sign-in. */
+/**
+ * Where Supabase sends the browser back after a sign-in.
+ *
+ * Whatever this returns has to be on the Redirect URLs allowlist in the
+ * Supabase dashboard, which is why `VERCEL_URL` is not the first choice: it is
+ * the *deployment* URL and changes on every push, so a redirect built from it
+ * would fall off the allowlist the moment you deploy again.
+ * `VERCEL_PROJECT_PRODUCTION_URL` is the stable domain and is what production
+ * should use; preview deployments still want their own URL, covered by a
+ * wildcard entry on the allowlist.
+ */
 export function siteUrl(): string {
   const configured = process.env.APP_URL?.trim();
-  if (configured) return configured.replace(/\/$/, '');
-  const vercel = process.env.VERCEL_URL?.trim();
-  if (vercel) return `https://${vercel}`;
+  if (configured) return configured.replace(/\/+$/, '');
+
+  const production = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  if (production && process.env.VERCEL_ENV === 'production') return `https://${production}`;
+
+  const deployment = process.env.VERCEL_URL?.trim();
+  if (deployment) return `https://${deployment}`;
+
+  if (production) return `https://${production}`;
+
   return 'http://localhost:3000';
 }

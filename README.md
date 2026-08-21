@@ -128,9 +128,37 @@ Muat semula halaman log masuk sekali atau dua — butang Google akan muncul
 
 #### URL
 
-**Authentication → URL Configuration** → Site URL: URL aplikasi anda (contoh
-`http://localhost:3000` semasa pembangunan), dan tambah `<url>/auth/callback`
-pada Redirect URLs.
+**Authentication → URL Configuration**:
+
+**Site URL** — satu nilai sahaja. Ini destinasi lalai selepas log masuk apabila
+tiada redirect lain dinyatakan.
+
+| Anda jalankan di | Site URL |
+|---|---|
+| Komputer sendiri | `http://localhost:3000` |
+| Vercel | `https://nama-projek.vercel.app` (domain produksi yang stabil) |
+
+**Redirect URLs** — boleh banyak, dan menyokong wildcard. Tambah setiap tempat
+aplikasi berjalan:
+
+```
+http://localhost:3000/auth/callback
+https://nama-projek.vercel.app/auth/callback
+https://*-nama-pasukan.vercel.app/auth/callback
+```
+
+Baris ketiga meliputi preview deployment Vercel, yang URL-nya berubah setiap
+kali anda push. Tanpa itu, log masuk pada preview akan ditolak dengan
+`requested path is invalid`.
+
+Aplikasi membina redirect ini sendiri melalui `siteUrl()`:
+
+1. `APP_URL` kalau diset — gunakan ini untuk domain tersuai
+2. Domain produksi Vercel yang stabil, bila `VERCEL_ENV=production`
+3. URL deployment Vercel, untuk preview
+4. `http://localhost:3000`
+
+Pastikan apa yang ia hasilkan ada dalam senarai Redirect URLs di atas.
 
 Akaun **pertama** yang mendaftar menjadi admin. Selepas itu, jemput orang lain
 di `/settings/team`.
