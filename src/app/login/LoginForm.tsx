@@ -7,10 +7,11 @@ import { Field, Input } from '@/components/ui/Field';
 import { SubmitButton } from '@/components/ui/Button';
 import { Notice } from '@/components/ui/Notice';
 import { cn } from '@/lib/cn';
+import type { AuthProviders } from '@/lib/auth/providers';
 
 type Mode = 'sign-in' | 'sign-up';
 
-export function LoginForm() {
+export function LoginForm({ providers }: { providers: AuthProviders }) {
   const search = useSearchParams();
   const next = search.get('next') ?? '/';
   const urlError = search.get('error');
@@ -40,17 +41,21 @@ export function LoginForm() {
         ))}
       </div>
 
-      <form action={signInWithGoogleAction}>
-        <SubmitButton variant="secondary" className="w-full" pendingLabel="Menghala ke Google…">
-          <GoogleMark /> Teruskan dengan Google
-        </SubmitButton>
-      </form>
+      {providers.google ? (
+        <>
+          <form action={signInWithGoogleAction}>
+            <SubmitButton variant="secondary" className="w-full" pendingLabel="Menghala ke Google…">
+              <GoogleMark /> Teruskan dengan Google
+            </SubmitButton>
+          </form>
 
-      <div className="flex items-center gap-3 text-[11px] text-ink-muted">
-        <span className="h-px flex-1 bg-[color:var(--border)]" />
-        atau
-        <span className="h-px flex-1 bg-[color:var(--border)]" />
-      </div>
+          <div className="flex items-center gap-3 text-[11px] text-ink-muted">
+            <span className="h-px flex-1 bg-[color:var(--border)]" />
+            atau
+            <span className="h-px flex-1 bg-[color:var(--border)]" />
+          </div>
+        </>
+      ) : null}
 
       <form action={mode === 'sign-in' ? runSignIn : runSignUp} className="space-y-3">
         <input type="hidden" name="next" value={next} />
@@ -89,6 +94,14 @@ export function LoginForm() {
         <p className="text-[11px] leading-relaxed text-ink-muted">
           Pendaftaran adalah melalui jemputan sahaja. Kalau emel anda belum dijemput, akaun tidak
           akan dibuat — minta admin menjemput anda dahulu.
+        </p>
+      ) : null}
+
+      {!providers.google ? (
+        <p className="text-[11px] leading-relaxed text-ink-muted">
+          Log masuk Google belum dihidupkan pada projek Supabase ini. Hidupkannya di
+          Authentication → Providers → Google, kemudian muat semula halaman ini sekali atau dua
+          — butangnya akan muncul di sini.
         </p>
       ) : null}
     </div>

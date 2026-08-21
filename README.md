@@ -91,18 +91,46 @@ supabase/migrations/0004_creative_copy.sql
 
 ### 2. Hidupkan cara log masuk
 
-Supabase Dashboard → **Authentication → Providers**:
+Skrin log masuk hanya menawarkan cara yang benar-benar hidup — ia bertanya
+Supabase (`/auth/v1/settings`) dahulu. Kalau Google belum dihidupkan, butangnya
+tidak dipaparkan langsung, dan satu nota memberitahu di mana hendak
+menghidupkannya. Ini mengelakkan jalan buntu: menekan butang Google pada projek
+yang providernya dimatikan akan menghantar anda ke JSON mentah GoTrue —
+`{"code":400,"error_code":"validation_failed","msg":"Unsupported provider:
+provider is not enabled"}` — di domain Supabase, tanpa jalan kembali.
 
-- **Email** — hidupkan. Untuk pasukan dalaman, matikan
-  &ldquo;Confirm email&rdquo; supaya akaun terus boleh guna; pintu masuk
-  sebenar ialah senarai jemputan, bukan pengesahan emel.
-- **Google** — hidupkan, tampal Client ID dan Secret dari Google Cloud Console.
-  Dalam Google Cloud, authorised redirect URI ialah
-  `https://<ref>.supabase.co/auth/v1/callback`.
+#### Emel + kata laluan
 
-Kemudian **Authentication → URL Configuration** → Site URL: URL aplikasi anda
-(contoh `http://localhost:3000` semasa pembangunan), dan tambah
-`<url>/auth/callback` pada Redirect URLs.
+Supabase Dashboard → **Authentication → Providers → Email** → hidupkan. Untuk
+pasukan dalaman, matikan &ldquo;Confirm email&rdquo; supaya akaun terus boleh
+guna; pintu masuk sebenar ialah senarai jemputan, bukan pengesahan emel.
+
+#### Google
+
+**Di Google Cloud Console** (console.cloud.google.com):
+
+1. Cipta atau pilih satu projek.
+2. **APIs & Services → OAuth consent screen** → **Get started**, pilih jenis
+   **External**, dan lengkapkan langkahnya.
+3. **APIs & Services → Credentials** → **Create Credentials** → **OAuth client
+   ID** → jenis aplikasi **Web application**.
+4. Di bawah **Authorised redirect URIs**, tambah:
+   `https://yrihtfugfsodsdseqyoe.supabase.co/auth/v1/callback`
+   — ini URL Supabase, **bukan** URL aplikasi anda. Ini yang paling kerap
+   tersilap.
+5. **Create**, kemudian salin Client ID dan Client Secret.
+
+**Di Supabase** → **Authentication → Providers → Google** → hidupkan, tampal
+Client ID dan Secret, simpan.
+
+Muat semula halaman log masuk sekali atau dua — butang Google akan muncul
+(status provider di-cache selama 30 saat).
+
+#### URL
+
+**Authentication → URL Configuration** → Site URL: URL aplikasi anda (contoh
+`http://localhost:3000` semasa pembangunan), dan tambah `<url>/auth/callback`
+pada Redirect URLs.
 
 Akaun **pertama** yang mendaftar menjadi admin. Selepas itu, jemput orang lain
 di `/settings/team`.
@@ -146,7 +174,7 @@ hanya untuk sistem akaun, tidak pernah untuk data kempen.
 npm install
 npm run dev        # http://localhost:3000
 npm run build      # binaan produksi
-npm test           # 30 ujian unit (parser + enjin metrik + peraturan hijau)
+npm test           # 37 ujian unit (parser, metrik, proxy, provider auth)
 npm run lint
 ```
 
@@ -310,6 +338,11 @@ hilang, bukan dibiarkan menjadi ralat bernombor.
 Supabase → Authentication → URL Configuration. Untuk Google, pastikan
 `https://<ref>.supabase.co/auth/v1/callback` ada dalam authorised redirect URI di
 Google Cloud Console.
+
+**`Unsupported provider: provider is not enabled`** — provider itu belum
+dihidupkan di Supabase → Authentication → Providers. Ikut langkah di bahagian
+persediaan di atas. Selepas dihidupkan, muat semula halaman log masuk sekali
+atau dua supaya cache status provider (30 saat) menyegar.
 
 **`Emel ini tiada jemputan`** — memang dijangka. Tambah emel itu di
 `/settings/team` dahulu, atau, kalau ini akaun pertama, pastikan jadual

@@ -1,15 +1,18 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { readSupabaseEnv } from '@/lib/env';
+import { enabledProviders } from '@/lib/auth/providers';
 import { LoginForm } from './LoginForm';
 
 export const dynamic = 'force-dynamic';
 
-export default function LoginPage() {
+export default async function LoginPage() {
   // /login is outside the proxy's auth check, so it has to make the same
   // config call itself — otherwise the form would post into an action that
   // cannot possibly work.
   if (!readSupabaseEnv().ok) redirect('/setup');
+
+  const providers = await enabledProviders();
 
   return (
     <div className="grid min-h-screen place-items-center px-6">
@@ -19,7 +22,7 @@ export default function LoginPage() {
           Masukkan kata laluan dashboard untuk teruskan.
         </p>
         <Suspense fallback={null}>
-          <LoginForm />
+          <LoginForm providers={providers} />
         </Suspense>
       </div>
     </div>
