@@ -135,16 +135,16 @@ tiada redirect lain dinyatakan.
 
 | Anda jalankan di | Site URL |
 |---|---|
+| Vercel (produksi) | `https://creative-analytic.vercel.app` |
 | Komputer sendiri | `http://localhost:3000` |
-| Vercel | `https://nama-projek.vercel.app` (domain produksi yang stabil) |
 
 **Redirect URLs** — boleh banyak, dan menyokong wildcard. Tambah setiap tempat
 aplikasi berjalan:
 
 ```
+https://creative-analytic.vercel.app/auth/callback
 http://localhost:3000/auth/callback
-https://nama-projek.vercel.app/auth/callback
-https://*-nama-pasukan.vercel.app/auth/callback
+https://creative-analytic-*.vercel.app/auth/callback
 ```
 
 Baris ketiga meliputi preview deployment Vercel, yang URL-nya berubah setiap
@@ -240,7 +240,7 @@ cp .env.example .env.local
 | `SUPABASE_ANON_KEY` | ya | Dashboard → Settings → API Keys → `anon` |
 | `SUPABASE_SERVICE_ROLE_KEY` | ya | Dashboard → Settings → API Keys → `service_role` |
 | `SUPABASE_SCHEMA` | tidak | lalai `public`. Set hanya jika jadual dipindahkan ke schema lain |
-| `APP_URL` | untuk deploy | asal awam, digunakan untuk redirect Google. Vercel dikesan automatik |
+| `APP_URL` | tidak | hanya untuk domain tersuai. Vercel dikesan automatik, jadi biarkan kosong di sana |
 
 **Tiada satu pun bernama `NEXT_PUBLIC_`, dan itu disengajakan.** Log masuk —
 termasuk redirect Google — dipandu dari server action, jadi tiada kredential
@@ -279,8 +279,18 @@ dan bahawa permintaan tanpa log masuk tidak nampak apa-apa.
 
 ### 6. Deploy (Vercel)
 
-Import repo, tetapkan environment variables yang sama, deploy. Tiada
-konfigurasi lain diperlukan — semua halaman dirender atas permintaan.
+Deployment semasa: **https://creative-analytic.vercel.app**
+
+1. Import repo. Production branch ialah `claude/creative-dashboard-design-m5hi38`
+   — repo ini belum ada `main`.
+2. **Settings → Environment Variables** → tambah `SUPABASE_URL`,
+   `SUPABASE_ANON_KEY` dan `SUPABASE_SERVICE_ROLE_KEY`, tandakan Production.
+   Biarkan `APP_URL` kosong; Vercel membekalkan domain produksinya sendiri.
+3. **Redeploy.** Perubahan environment variable **tidak** terpakai pada
+   deployment yang sudah wujud — ini punca paling biasa bila env sudah diisi
+   tetapi ralat lama masih muncul.
+
+Tiada konfigurasi lain diperlukan; semua halaman dirender atas permintaan.
 
 ---
 
