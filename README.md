@@ -78,16 +78,29 @@ berasingan daripada `donor-crm`. Jadual duduk dalam schema **`public`**, yang
 Supabase dedahkan kepada API secara lalai — jadi tiada langkah "Exposed
 schemas", dan Table Editor terus menunjukkan jadual-jadual ini.
 
-Keempat-empat migrasi **sudah dijalankan** pada projek itu — 10 jadual (RLS
-dihidupkan, 11 policy), 5 fungsi agregasi, dan pencetus jemputan. Untuk projek
-baharu, jalankan fail ini mengikut turutan dalam **SQL Editor**:
+Kesemua migrasi **sudah dijalankan** pada projek itu — 12 jadual (RLS
+dihidupkan pada setiap satu), 5 fungsi agregasi, dan pencetus jemputan. Untuk
+projek baharu, jalankan fail ini mengikut turutan dalam **SQL Editor**:
 
 ```
 supabase/migrations/0001_core_schema.sql
 supabase/migrations/0002_analytics_functions.sql
 supabase/migrations/0003_auth_and_ownership.sql
 supabase/migrations/0004_creative_copy.sql
+supabase/migrations/0005_ad_connections.sql
+supabase/migrations/0006_tighten_function_grants.sql
 ```
+
+Selepas menjalankannya, **Advisors → Security** sepatutnya bersih kecuali dua
+perkara yang memang dijangka: `is_admin()` boleh dipanggil oleh pengguna yang
+sudah log masuk (policy `invites_admin_all` memerlukannya, dan ia hanya
+menjawab tentang pemanggil sendiri), dan `rls_auto_enable()` milik platform
+Supabase sendiri — ia mengembalikan `event_trigger`, jadi PostgREST tidak boleh
+memanggilnya walaupun lint mengatakan sebaliknya.
+
+Satu tetapan yang berbaloi dihidupkan sendiri: **Authentication → Policies →
+Leaked password protection**. Ia menyemak kata laluan baharu terhadap
+HaveIBeenPwned dan menolak yang sudah bocor.
 
 ### 2. Hidupkan cara log masuk
 
@@ -242,6 +255,23 @@ cp .env.example .env.local
 | `SUPABASE_SCHEMA` | tidak | lalai `public`. Set hanya jika jadual dipindahkan ke schema lain |
 | `APP_URL` | tidak | hanya untuk domain tersuai. Vercel dikesan automatik, jadi biarkan kosong di sana |
 
+Untuk menyambung akaun iklan terus (pilihan — muat naik CSV berfungsi tanpa
+semua ini):
+
+| Variable | Untuk | Nota |
+|---|---|---|
+| `TOKEN_ENCRYPTION_KEY` | kedua-dua | `openssl rand -base64 32`. Wajib sebelum mana-mana butang sambung muncul |
+| `META_APP_ID` | Meta Ads | App Dashboard → Settings → Basic |
+| `META_APP_SECRET` | Meta Ads | tempat sama |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads | Google Ads MCC → API Center |
+| `GOOGLE_ADS_CLIENT_ID` | Google Ads | jatuh balik kepada `GOOGLE_CLIENT_ID` |
+| `GOOGLE_ADS_CLIENT_SECRET` | Google Ads | jatuh balik kepada `GOOGLE_CLIENT_SECRET` |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Google Ads | hanya kalau akaun dicapai melalui manager (MCC) |
+
+Panel di tab Data menamakan variable yang belum diisi, jadi tidak perlu
+meneka mana satu yang tertinggal. Langkah penuh:
+[`docs/sambungan-akaun.md`](docs/sambungan-akaun.md).
+
 **Tiada satu pun bernama `NEXT_PUBLIC_`, dan itu disengajakan.** Log masuk —
 termasuk redirect Google — dipandu dari server action, jadi tiada kredential
 Supabase sampai ke pelayar dan pelayar tidak pernah bercakap terus dengan
@@ -258,7 +288,7 @@ hanya untuk sistem akaun, tidak pernah untuk data kempen.
 npm install
 npm run dev        # http://localhost:3000
 npm run build      # binaan produksi
-npm test           # 37 ujian unit (parser, metrik, proxy, provider auth)
+npm test           # 69 ujian unit (parser, metrik, proxy, auth, penyulitan, adapter platform)
 npm run lint
 ```
 
@@ -444,12 +474,20 @@ atau dua supaya cache status provider (30 saat) menyegar.
 
 ---
 
-## Fasa 2 — Meta Marketing API
+## Sambungan akaun iklan
 
-Lapisan data sudah agnostik terhadap sumber: `creative.ad_metrics` menyimpan
-`source` dan `creative.creatives` menyimpan `external_ad_id`, dan
-`src/lib/ingest/adapter.ts` mentakrifkan bentuk yang mesti dihasilkan oleh
-mana-mana sumber. Menambah tarikan automatik bermakna menulis **satu** penghasil
-baharu; writer, enjin metrik dan seluruh UI tidak berubah.
+Selain muat naik CSV, dashboard boleh menarik data terus daripada **Meta Ads**
+dan **Google Ads** — sambungan baca-sahaja, seperti Madgicx.
 
-Langkah-langkahnya ada dalam [`docs/meta-api.md`](docs/meta-api.md).
+Kedua-dua sumber melalui writer yang sama seperti CSV, jadi snapshot, rollback,
+padanan kreatif dan dedupe berfungsi serupa. `src/lib/ingest/adapter.ts`
+mentakrifkan bentuk (`NormalizedAdMetric`) yang mesti dihasilkan oleh mana-mana
+sumber; menambah platform ketiga bermakna menulis satu penghasil baharu dan
+tidak menyentuh apa-apa yang lain.
+
+Token disulitkan (AES-256-GCM) sebelum disimpan, dan lajur token tidak pernah
+dipilih oleh kod yang merender halaman.
+
+Langkah persediaan penuh untuk kedua-dua platform, termasuk kenapa app Meta
+tidak memerlukan App Review untuk kegunaan dalaman:
+[`docs/sambungan-akaun.md`](docs/sambungan-akaun.md).

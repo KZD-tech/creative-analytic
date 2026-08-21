@@ -1,12 +1,16 @@
 import { getBenchmarks, getCampaign, listBatches, listSnapshots } from '@/lib/db/queries';
+import { listCampaignSources, listConnections } from '@/lib/db/connections';
+import { platformStatus } from '@/lib/connections/config';
 import { load } from '@/lib/db/safe';
 import { SetupNotice } from '@/components/SetupNotice';
 import { UploadPanel } from '@/components/data/UploadPanel';
 import { RollbackList } from '@/components/data/RollbackList';
 import { BenchmarkForm } from '@/components/data/BenchmarkForm';
 import { NewCampaignForm } from '@/components/NewCampaignForm';
+import {
+  ConnectButtons, ConnectFeedback, LastSyncLine, LinkedSources, SyncButton,
+} from '@/components/data/ConnectionsPanel';
 import { Card, CardHeader, SectionTitle, Badge } from '@/components/ui/primitives';
-import { Notice } from '@/components/ui/Notice';
 import { dateTime } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -16,6 +20,7 @@ const KIND_LABEL: Record<string, string> = {
   conversions: 'Derma',
   media_links: 'Pautan video',
   meta_api: 'Meta API',
+  google_ads: 'Google Ads',
   rollback: 'Rollback',
 };
 
@@ -26,28 +31,61 @@ const STATUS_TONE = {
   rolled_back: 'neutral',
 } as const;
 
-export default async function DataPage({ params }: { params: Promise<{ campaignId: string }> }) {
+export default async function DataPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ campaignId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { campaignId } = await params;
+  const query = await searchParams;
 
   const loaded = await load(async () => {
     const campaign = await getCampaign(campaignId);
     if (!campaign) return null;
 
-    const [batches, snapshots, benchmarks] = await Promise.all([
+    const [batches, snapshots, benchmarks, connections, sources] = await Promise.all([
       listBatches(campaignId),
       listSnapshots(campaignId),
       getBenchmarks(campaignId),
+      listConnections(),
+      listCampaignSources(campaignId),
     ]);
-    return { batches, snapshots, benchmarks };
+    return { batches, snapshots, benchmarks, connections, sources };
   });
 
   if (!loaded.ok) return <SetupNotice error={loaded.error} />;
   if (!loaded.data) return null;
 
-  const { batches, snapshots, benchmarks } = loaded.data;
+  const { batches, snapshots, benchmarks, connections, sources } = loaded.data;
+  const statuses = [platformStatus('meta'), platformStatus('google_ads')];
+  const connectOk = typeof query.connect_ok === 'string' ? query.connect_ok : undefined;
+  const connectError = typeof query.connect_error === 'string' ? query.connect_error : undefined;
 
   return (
     <div className="space-y-6">
+      <section>
+        <SectionTitle>Akaun iklan bersambung</SectionTitle>
+        <Card>
+          <CardHeader
+            title="Tarik data terus, tanpa CSV"
+            subtitle="Sambungan baca-sahaja. Token disulitkan sebelum disimpan, dan hanya akaun anda boleh melihatnya."
+          />
+          <div className="space-y-4 px-5 pb-4">
+            <ConnectFeedback ok={connectOk} error={connectError} />
+            <ConnectButtons campaignId={campaignId} statuses={statuses} />
+            <LinkedSources campaignId={campaignId} sources={sources} connections={connections} />
+            {sources.length > 0 ? (
+              <div className="space-y-2 border-t border-line pt-3">
+                <SyncButton campaignId={campaignId} />
+                <LastSyncLine connections={connections} />
+              </div>
+            ) : null}
+          </div>
+        </Card>
+      </section>
+
       <section>
         <SectionTitle>Muat naik data</SectionTitle>
         <UploadPanel campaignId={campaignId} />
@@ -125,19 +163,6 @@ export default async function DataPage({ params }: { params: Promise<{ campaignI
           />
           <BenchmarkForm benchmarks={benchmarks} />
         </Card>
-      </section>
-
-      <section>
-        <SectionTitle>Sambungan Meta API</SectionTitle>
-        <Notice tone="info" title="Fasa 2 — belum aktif">
-          Lapisan data sudah agnostik: jadual metrik menyimpan{' '}
-          <code className="rounded bg-surface-2 px-1">source</code> dan{' '}
-          <code className="rounded bg-surface-2 px-1">external_ad_id</code>, jadi tarikan
-          automatik daripada Meta Marketing API boleh menulis ke jadual yang sama tanpa mengubah
-          UI. Yang tinggal ialah Meta App, token, dan kelulusan permission{' '}
-          <code className="rounded bg-surface-2 px-1">ads_read</code>. Lihat{' '}
-          <code className="rounded bg-surface-2 px-1">docs/meta-api.md</code>.
-        </Notice>
       </section>
 
       <section>

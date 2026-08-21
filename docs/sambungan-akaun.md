@@ -1,0 +1,200 @@
+# Sambungan akaun iklan — Meta Ads & Google Ads
+
+Menyambung akaun iklan menggantikan muat naik CSV: dashboard menarik data
+terus daripada platform, sama seperti Madgicx atau Skaler. Sambungan adalah
+**baca-sahaja** — skop yang diminta tidak membenarkan aplikasi ini menukar
+belanja, menghidupkan iklan, atau menyentuh apa-apa dalam akaun anda.
+
+Muat naik CSV **tidak** dibuang. Kedua-duanya menulis ke jadual yang sama
+melalui writer yang sama, jadi anda boleh guna API untuk kempen baharu dan
+kekal dengan CSV untuk data sejarah.
+
+---
+
+## Ringkasan aliran
+
+```
+Pengguna klik "Sambung Meta Ads"
+   → /api/connect/meta/start        ← tandatangan state (HMAC) + id pengguna
+   → skrin kebenaran Meta
+   → /api/connect/meta/callback     ← sahkan state, sahkan pengguna sama
+   → tukar code → token jangka panjang
+   → senaraikan akaun iklan, simpan (token disulitkan AES-256-GCM)
+   → kembali ke tab Data
+
+Pengguna klik "Segerak sekarang"
+   → tarik insights 30 hari terakhir, harian, di peringkat iklan
+   → tukar kepada NormalizedAdMetric
+   → writer yang sama seperti CSV: snapshot, rollback, padanan kreatif
+```
+
+Dua jadual menyimpannya:
+
+| Jadual | Isi |
+|---|---|
+| `ad_connections` | satu baris per akaun iklan; token disulitkan, milik satu pengguna |
+| `campaign_sources` | kempen mana menarik daripada sambungan mana, dan (pilihan) hanya kempen platform yang disenaraikan |
+
+RLS memastikan seorang pengguna hanya nampak sambungannya sendiri, dan
+`campaign_sources` menyemak **dua-dua** belah: kempen mesti milik anda *dan*
+sambungan mesti milik anda.
+
+---
+
+## Kunci penyulitan (wajib untuk kedua-dua platform)
+
+Token tidak pernah masuk ke pangkalan data dalam bentuk asal. Jana kunci:
+
+```bash
+openssl rand -base64 32
+```
+
+Letak sebagai `TOKEN_ENCRYPTION_KEY`. Tanpa ia, butang sambung tidak muncul dan
+panel akan menyebut nama env yang belum diisi.
+
+> Menukar kunci ini menjadikan semua token sedia ada tidak boleh dibaca.
+> Pengguna perlu menyambung semula akaun mereka — tiada data metrik hilang.
+
+---
+
+## Meta Ads
+
+### 1. Cipta app
+
+1. [developers.facebook.com/apps](https://developers.facebook.com/apps) → **Create App**
+2. Jenis: **Business**
+3. Tambah produk **Facebook Login**, kemudian **Marketing API**
+
+### 2. Redirect URI
+
+**Facebook Login → Settings → Valid OAuth Redirect URIs**:
+
+```
+https://creative-analytic.vercel.app/api/connect/meta/callback
+```
+
+Tambah juga `http://localhost:3000/api/connect/meta/callback` kalau anda
+membangunkan secara tempatan.
+
+### 3. Kekal dalam Development Mode
+
+Ini yang menjimatkan berminggu-minggu. Skop `ads_read` dan
+`business_management` berfungsi **tanpa App Review** untuk sesiapa yang ada
+peranan dalam app itu sendiri.
+
+**App Roles → Roles → Add People** → tambah setiap ahli pasukan Kaizen sebagai
+Admin, Developer atau Tester. Mereka juga perlu menerima jemputan di
+[developers.facebook.com/requests](https://developers.facebook.com/requests).
+
+App Review hanya perlu kalau orang luar (klien, agensi lain) akan menyambung
+akaun mereka sendiri.
+
+### 4. Env
+
+| Variable | Dari mana |
+|---|---|
+| `META_APP_ID` | App Dashboard → Settings → Basic → App ID |
+| `META_APP_SECRET` | tempat sama → App Secret (klik **Show**) |
+| `META_GRAPH_VERSION` | pilihan; lalai `v21.0` |
+
+### Apa yang ditarik
+
+`level=ad`, `time_increment=1` (satu baris per iklan per hari — inilah yang
+menghidupkan semua graf trend), medan: spend, impressions, reach, frequency,
+clicks, link clicks, landing page views, video views + kuartil, actions dan
+action_values.
+
+Derma dibaca daripada `actions`/`action_values` dengan memilih mengikut
+`action_type` (`purchase`, kemudian `offsite_conversion.fb_pixel_purchase`),
+**bukan** mengikut kedudukan dalam array — susunan array Meta tidak stabil.
+
+---
+
+## Google Ads
+
+Google memerlukan satu benda tambahan yang Meta tidak: **developer token**.
+
+### 1. Developer token
+
+1. Buka akaun **Google Ads Manager (MCC)** — bukan akaun iklan biasa
+2. **Tools & Settings → Setup → API Center**
+3. Mohon token. Status *Test Account* datang serta-merta tetapi hanya boleh
+   membaca akaun ujian; untuk data sebenar mohon **Basic Access** (biasanya
+   diluluskan dalam 1–3 hari bekerja)
+
+### 2. OAuth client
+
+Client OAuth yang sama seperti log masuk Google boleh digunakan semula —
+hanya tambah callback ini pada **Authorized redirect URIs**:
+
+```
+https://creative-analytic.vercel.app/api/connect/google-ads/callback
+```
+
+Dan hidupkan **Google Ads API** di
+[console.cloud.google.com/apis/library](https://console.cloud.google.com/apis/library).
+
+### 3. Env
+
+| Variable | Wajib | Nota |
+|---|---|---|
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | ya | daripada API Center |
+| `GOOGLE_ADS_CLIENT_ID` | ya* | *jatuh balik kepada `GOOGLE_CLIENT_ID` kalau tidak diisi |
+| `GOOGLE_ADS_CLIENT_SECRET` | ya* | *jatuh balik kepada `GOOGLE_CLIENT_SECRET` |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | tidak | id MCC (angka sahaja, tanpa sengkang) kalau akaun dicapai melalui manager |
+
+### Apa yang ditarik
+
+GAQL terhadap `ad_group_ad`, satu baris per iklan per hari. Dua perangkap yang
+sudah dikendalikan:
+
+- **Kos dalam micros.** `cost_micros: 152340000` bermaksud RM152.34. Dibahagi
+  dengan 1,000,000.
+- **Kuartil video ialah kadar, bukan bilangan.**
+  `video_quartile_p25_rate: 0.62` bermaksud 62% daripada impressions, bukan 62
+  tontonan. Didarab dengan impressions supaya sepadan dengan bentuk Meta.
+
+---
+
+## Selepas menyambung
+
+Panel di tab **Data** menyenaraikan setiap akaun yang bersambung. Untuk setiap
+satu anda boleh:
+
+- **Hadkan kepada kempen tertentu** — isikan id kempen platform, dipisah koma.
+  Biarkan kosong untuk menarik seluruh akaun.
+- **Buang dari kempen** — berhenti menarik, tetapi kekalkan sambungan
+- **Putuskan akaun** — padam sambungan dan tokennya sekali
+
+Setiap segerak menulis melalui writer yang sama seperti CSV, jadi **rollback
+berfungsi ke atas tarikan API juga**. Menyegerak semula tempoh yang sama tidak
+menggandakan apa-apa: `(creative_id, date_start, date_stop, source)` adalah
+unik, jadi baris yang sama dikemas kini, bukan disisipkan.
+
+Tetingkap lalai ialah **30 hari terakhir**. Ia sengaja bertindih: Meta dan
+Google masih melaraskan angka beberapa hari selepas fakta, jadi menarik semula
+hari semalam adalah betul, bukan pembaziran.
+
+---
+
+## Bila ada yang tak kena
+
+**`Konfigurasi belum lengkap: …`** — panel menamakan env yang belum diisi.
+Selepas mengisinya di Vercel, **redeploy**; env baharu tidak terpakai pada
+deployment sedia ada.
+
+**`Sesi tidak sepadan. Cuba lagi.`** — sesi berubah antara mula dan tamat
+aliran OAuth (biasanya log masuk di tab lain). Mula semula.
+
+**`Tiada akaun iklan pada akaun Meta ini`** — akaun Meta yang digunakan tiada
+akses Ads, atau peranan dalam app belum diterima di
+[developers.facebook.com/requests](https://developers.facebook.com/requests).
+
+**`Perlu sambung semula`** pada satu sambungan — platform menolak token itu
+(Meta OAuthException 190, atau Google `invalid_grant`). Klik **Sambung** sekali
+lagi. Kegagalan rangkaian atau kuota **tidak** menandakan ini; ia dikira secara
+eksplisit daripada kod ralat platform, bukan diteka daripada teks mesej.
+
+**`… gagal (HTTP 403): Host not in allowlist`** — persekitaran itu menyekat
+`graph.facebook.com` atau `googleads.googleapis.com` di peringkat rangkaian.
+Ini bukan masalah token.

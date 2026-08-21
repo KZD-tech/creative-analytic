@@ -56,4 +56,4 @@ export interface IngestResult<T> {
   skipped: number;
 }
 
-export type MetricSource = 'csv' | 'meta_api';
+export type MetricSource = 'csv' | 'meta_api' | 'google_ads';

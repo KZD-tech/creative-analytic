@@ -115,3 +115,64 @@ begin
   raise exception 'RLS TEST PASSED - transaction rolled back, nothing persisted';
 end;
 $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Connections carry a credential to somebody's ad spend, so they get their own
+-- isolation check rather than riding on the campaign one.
+-- ═══════════════════════════════════════════════════════════════════════════
+do $$
+declare
+  alice uuid; bob uuid; seen integer;
+begin
+  delete from public.profiles;
+  delete from public.invites;
+
+  insert into auth.users (email) values ('alice2@example.com') returning id into alice;
+  insert into public.invites (email) values ('bob2@example.com');
+  insert into auth.users (email) values ('bob2@example.com') returning id into bob;
+
+  insert into public.campaigns (id, name, owner_id) values ('alice2-camp', 'Alice', alice);
+
+  insert into public.ad_connections
+    (owner_id, platform, external_account_id, account_name, access_token)
+  values
+    (alice, 'meta', 'act_111', 'Alice Ads', 'v1.ciphertext-alice'),
+    (bob,   'meta', 'act_222', 'Bob Ads',   'v1.ciphertext-bob');
+
+  set local role authenticated;
+
+  -- ── as Alice ────────────────────────────────────────────────────────────
+  perform set_config('request.jwt.claim.sub', alice::text, true);
+
+  select count(*) into seen from public.ad_connections;
+  if seen <> 1 then raise exception 'FAIL: Alice sees % connections, expected 1', seen; end if;
+
+  select count(*) into seen from public.ad_connections where external_account_id = 'act_222';
+  if seen <> 0 then raise exception 'FAIL: Alice can read Bob''s ad account credential'; end if;
+
+  -- Pointing her own campaign at Bob's connection must be refused: otherwise a
+  -- campaign could pull data using somebody else's token. Alice cannot even
+  -- read that row, so the insert has nothing to reference and fails either on
+  -- the policy or on the null it produces — both are a refusal.
+  begin
+    insert into public.campaign_sources (campaign_id, connection_id)
+    values ('alice2-camp', (select id from public.ad_connections where owner_id = bob));
+    raise exception 'FAIL: Alice linked her campaign to Bob''s connection';
+  exception when insufficient_privilege or not_null_violation then
+    null;  -- expected
+  end;
+
+  -- ── as Bob ──────────────────────────────────────────────────────────────
+  perform set_config('request.jwt.claim.sub', bob::text, true);
+  select count(*) into seen from public.ad_connections;
+  if seen <> 1 then raise exception 'FAIL: Bob sees % connections, expected 1', seen; end if;
+
+  -- ── signed out ──────────────────────────────────────────────────────────
+  perform set_config('request.jwt.claim.sub', '', true);
+  select count(*) into seen from public.ad_connections;
+  if seen <> 0 then raise exception 'FAIL: signed-out request saw % connections', seen; end if;
+
+  reset role;
+  raise exception 'CONNECTION RLS TEST PASSED - rolled back';
+end;
+$$;

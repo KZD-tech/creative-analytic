@@ -157,13 +157,14 @@ export interface Benchmarks {
   min_spend: number;
 }
 
-export type BatchKind = 'fb_ads' | 'conversions' | 'media_links' | 'meta_api' | 'rollback';
+export type BatchKind =
+  | 'fb_ads' | 'conversions' | 'media_links' | 'meta_api' | 'google_ads' | 'rollback';
 
 export interface UploadBatch {
   id: string;
   campaign_id: string;
   kind: BatchKind;
-  source: 'csv' | 'meta_api' | 'manual';
+  source: 'csv' | 'meta_api' | 'google_ads' | 'manual';
   filename: string | null;
   row_count: number;
   inserted_count: number;

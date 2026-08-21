@@ -150,7 +150,7 @@ export async function loadCreativeIndex(campaignId: string): Promise<Map<string,
 async function openBatch(
   campaignId: string,
   kind: BatchKind,
-  source: 'csv' | 'meta_api' | 'manual',
+  source: 'csv' | 'meta_api' | 'google_ads' | 'manual',
   filename: string | null,
   snapshot: unknown[] | null,
 ): Promise<string> {
@@ -278,7 +278,8 @@ export async function writeAdMetrics(
   const before = await readAll<Record<string, unknown>>('ad_metrics', METRIC_COLUMNS, campaignId, {
     source: opts.source,
   });
-  const batchId = await openBatch(campaignId, opts.source === 'meta_api' ? 'meta_api' : 'fb_ads', opts.source === 'meta_api' ? 'meta_api' : 'csv', opts.filename, before);
+  const kind = opts.source === 'csv' ? 'fb_ads' : opts.source;
+  const batchId = await openBatch(campaignId, kind, opts.source, opts.filename, before);
 
   if (before.length > MAX_SNAPSHOT_ROWS) {
     warnings.push('Data terlalu besar untuk snapshot — rollback tidak tersedia untuk muat naik ini.');
