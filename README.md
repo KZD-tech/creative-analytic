@@ -293,6 +293,30 @@ mana ia murah untuk diubah dan senang diuji.
 
 ---
 
+## Bila ada yang tak kena
+
+**`Minified React error #441`** — ini bukan pepijat khusus. React 19 menyembunyikan
+mesej ralat sisi-pelayan daripada pelayar dalam binaan produksi dan
+menggantikannya dengan nombor. **Ralat sebenar ada dalam log pelayan**: terminal
+tempat `npm run start` berjalan, atau tab *Logs* di Vercel. Skrin ralat aplikasi
+memaparkan `digest` supaya anda boleh mencarinya dalam log itu.
+
+Punca paling biasa ialah environment variable yang belum diisi. Aplikasi kini
+mengesan ini lebih awal — kalau `SUPABASE_URL` atau `SUPABASE_ANON_KEY` tiada,
+setiap permintaan dihalakan ke skrin persediaan yang menamakan pembolehubah yang
+hilang, bukan dibiarkan menjadi ralat bernombor.
+
+**Log masuk berpusing balik ke `/login`** — periksa Site URL dan Redirect URLs di
+Supabase → Authentication → URL Configuration. Untuk Google, pastikan
+`https://<ref>.supabase.co/auth/v1/callback` ada dalam authorised redirect URI di
+Google Cloud Console.
+
+**`Emel ini tiada jemputan`** — memang dijangka. Tambah emel itu di
+`/settings/team` dahulu, atau, kalau ini akaun pertama, pastikan jadual
+`public.profiles` masih kosong supaya ia boleh bootstrap sebagai admin.
+
+---
+
 ## Fasa 2 — Meta Marketing API
 
 Lapisan data sudah agnostik terhadap sumber: `creative.ad_metrics` menyimpan

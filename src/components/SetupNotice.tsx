@@ -34,7 +34,7 @@ export function SetupNotice({ error }: { error: unknown }) {
           </li>
           <li>
             <span className="mr-1.5 font-semibold">2.</span>
-            Jalankan ketiga-tiga fail dalam{' '}
+            Jalankan keempat-empat fail dalam{' '}
             <code className="rounded bg-surface-2 px-1">supabase/migrations/</code> mengikut
             turutan, melalui SQL Editor Supabase.
           </li>

@@ -3,7 +3,7 @@ import { createServerClient } from '@supabase/ssr';
 
 // Everything except the sign-in surfaces and Next's own assets.
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg|login|auth/callback).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg|setup|auth/callback).*)'],
 };
 
 /**
@@ -17,9 +17,16 @@ export async function proxy(request: NextRequest) {
   const url = process.env.SUPABASE_URL?.trim();
   const anonKey = process.env.SUPABASE_ANON_KEY?.trim();
 
-  // Not configured yet: let the request through so the setup screen can explain
-  // what is missing instead of redirecting to a login that cannot work either.
-  if (!url || !anonKey) return NextResponse.next();
+  // Not configured yet. Send everything to the setup screen: letting the
+  // request through means `requireUser()` throws deep inside a server
+  // component, and React replaces that message with a bare error code in
+  // production — a dead end for whoever is doing the deploy.
+  if (!url || !anonKey) {
+    const setup = request.nextUrl.clone();
+    setup.pathname = '/setup';
+    setup.search = '';
+    return NextResponse.rewrite(setup);
+  }
 
   let response = NextResponse.next({ request });
 
@@ -34,9 +41,22 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const { data } = await supabase.auth.getUser();
+  // A Supabase outage should land on the login screen, not crash the render.
+  const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+
+  if (request.nextUrl.pathname === '/login') {
+    // Signed in already: no reason to show the form again.
+    if (data.user) {
+      const home = request.nextUrl.clone();
+      home.pathname = '/';
+      home.search = '';
+      return NextResponse.redirect(home);
+    }
+    return response;
+  }
 
   if (!data.user) {
+
     const target = request.nextUrl.clone();
     target.pathname = '/login';
     target.search = `?next=${encodeURIComponent(request.nextUrl.pathname + request.nextUrl.search)}`;

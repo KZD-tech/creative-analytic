@@ -11,12 +11,23 @@ export interface SessionUser {
 
 /** The signed-in user, or null. Never throws on a missing session. */
 export async function currentUser(): Promise<SessionUser | null> {
-  const supabase = await db();
+  // "Not signed in" and "cannot reach Supabase" both mean the same thing to a
+  // caller: do not serve this page. Throwing here instead would surface as an
+  // opaque error code in production rather than the login or setup screen.
+  let supabase;
+  try {
+    supabase = await db();
+  } catch {
+    return null;
+  }
 
   // getUser() revalidates the token with Supabase rather than trusting the
   // cookie's contents, which is the difference that matters on a server that
   // makes authorization decisions.
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getUser().catch(() => ({
+    data: { user: null },
+    error: new Error('unreachable'),
+  }));
   if (error || !data.user) return null;
 
   const { data: profile } = await supabase
