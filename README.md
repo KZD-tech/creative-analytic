@@ -33,11 +33,13 @@ data lama.
 
 ### 1. Projek Supabase
 
-Guna projek sedia ada atau buat yang baharu. Skema ini duduk dalam schema
-berasingan bernama `creative`, jadi ia tidak akan berlanggar dengan apa-apa yang
-sudah ada dalam `public`.
+Projek yang digunakan: **`creative-analytic`** (`yrihtfugfsodsdseqyoe`),
+berasingan daripada `donor-crm`. Skema duduk dalam schema bernama `creative`,
+bukan `public`.
 
-Dalam **SQL Editor**, jalankan kedua-dua fail ini mengikut turutan:
+Kedua-dua migrasi **sudah dijalankan** pada projek itu — 8 jadual (RLS
+dihidupkan) dan 5 fungsi agregasi. Untuk projek baharu, jalankan fail ini
+mengikut turutan dalam **SQL Editor**:
 
 ```
 supabase/migrations/0001_creative_schema.sql
@@ -60,8 +62,8 @@ cp .env.example .env.local
 
 | Variable | Wajib | Nota |
 |---|---|---|
-| `SUPABASE_URL` | ya | contoh `https://xxxx.supabase.co` |
-| `SUPABASE_SERVICE_ROLE_KEY` | ya | **server sahaja** — jangan sekali-kali beri prefix `NEXT_PUBLIC_` |
+| `SUPABASE_URL` | ya | `https://yrihtfugfsodsdseqyoe.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | ya | Dashboard → Settings → API Keys → `service_role`. **Server sahaja** — jangan sekali-kali beri prefix `NEXT_PUBLIC_` |
 | `SUPABASE_SCHEMA` | tidak | lalai `creative` |
 | `APP_PASSWORD` | untuk deploy awam | kata laluan kongsi; kosong = dashboard terbuka |
 | `APP_SESSION_SECRET` | jika `APP_PASSWORD` diisi | `openssl rand -base64 32` |
