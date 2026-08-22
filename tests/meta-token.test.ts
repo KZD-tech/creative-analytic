@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
-import { exchangeMetaCode } from '@/lib/connections/meta';
+import { exchangeMetaCode, listMetaAdAccounts } from '@/lib/connections/meta';
 
 const INPUT = {
   appId: '123',
@@ -80,4 +80,88 @@ test('a failure on the first hop is still an error', async () => {
   // Falling back only makes sense once there is a token to fall back to.
   stubGraph([{ status: 400, body: { error: { message: 'Invalid verification code', code: 100 } } }]);
   await assert.rejects(() => exchangeMetaCode(INPUT), /Invalid verification code/);
+});
+
+// ── diagnosing (#200) Missing Permissions ───────────────────────────────────
+// Meta names neither the permission nor the token in that error, so the
+// listing asks the token what it actually carries before giving up.
+
+test('a #200 is re-reported as the exact permissions the token is missing', async () => {
+  stubGraph([
+    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
+    { body: { data: [{ permission: 'public_profile', status: 'granted' }] } },
+  ]);
+
+  await assert.rejects(
+    () => listMetaAdAccounts('token'),
+    (error: Error) => {
+      assert.match(error.message, /ads_read dan business_management/);
+      assert.match(error.message, /Yang ada: public_profile/);
+      return true;
+    },
+  );
+});
+
+test('a partially granted token names only what is actually absent', async () => {
+  stubGraph([
+    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
+    {
+      body: {
+        data: [
+          { permission: 'ads_read', status: 'granted' },
+          { permission: 'business_management', status: 'declined' },
+        ],
+      },
+    },
+  ]);
+
+  await assert.rejects(
+    () => listMetaAdAccounts('token'),
+    (error: Error) => {
+      assert.match(error.message, /tidak membawa business_management/);
+      assert.ok(!/tidak membawa ads_read/.test(error.message), 'ads_read is granted, so it is not blamed');
+      return true;
+    },
+  );
+});
+
+test('when every scope is present the message points at asset assignment instead', async () => {
+  stubGraph([
+    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
+    {
+      body: {
+        data: [
+          { permission: 'ads_read', status: 'granted' },
+          { permission: 'business_management', status: 'granted' },
+        ],
+      },
+    },
+  ]);
+
+  await assert.rejects(
+    () => listMetaAdAccounts('token'),
+    (error: Error) => {
+      assert.match(error.message, /Business Settings/);
+      return true;
+    },
+  );
+});
+
+test('the permissions lookup failing leaves the original error intact', async () => {
+  // The diagnostic is a convenience; it must never replace the real error.
+  stubGraph([
+    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
+    { status: 500, body: { error: { message: 'try again later' } } },
+  ]);
+
+  await assert.rejects(() => listMetaAdAccounts('token'), /Missing Permissions/);
+});
+
+test('errors that are not #200 are passed through untouched', async () => {
+  const calls = stubGraph([
+    { status: 400, body: { error: { message: 'Invalid OAuth access token', code: 190 } } },
+  ]);
+
+  await assert.rejects(() => listMetaAdAccounts('token'), /Invalid OAuth access token/);
+  assert.equal(calls.length, 1, 'no permissions lookup for an unrelated failure');
 });

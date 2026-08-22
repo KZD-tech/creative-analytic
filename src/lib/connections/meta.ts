@@ -134,14 +134,57 @@ export interface MetaAdAccount {
   timezone: string | null;
 }
 
+/**
+ * Reads the scopes actually attached to a token. Best-effort: it exists to
+ * improve an error message, so a failure here must not replace the error it
+ * was called to explain.
+ */
+async function grantedScopes(accessToken: string): Promise<string[] | null> {
+  try {
+    const body = await graph<{ data?: { permission: string; status: string }[] }>(
+      '/me/permissions',
+      { access_token: accessToken },
+    );
+    return (body.data ?? [])
+      .filter((row) => row.status === 'granted')
+      .map((row) => row.permission);
+  } catch {
+    return null;
+  }
+}
+
 export async function listMetaAdAccounts(accessToken: string): Promise<MetaAdAccount[]> {
-  const body = await graph<{
-    data: { id: string; name?: string; currency?: string; timezone_name?: string }[];
-  }>('/me/adaccounts', {
-    access_token: accessToken,
-    fields: 'id,name,currency,timezone_name',
-    limit: '200',
-  });
+  let body: { data: { id: string; name?: string; currency?: string; timezone_name?: string }[] };
+
+  try {
+    body = await graph('/me/adaccounts', {
+      access_token: accessToken,
+      fields: 'id,name,currency,timezone_name',
+      limit: '200',
+    });
+  } catch (error) {
+    // Meta answers a token that is missing `ads_read` with a bare
+    // "(#200) Missing Permissions", naming neither the permission nor the
+    // token. Asking the token what it carries turns that into something
+    // actionable — usually revealing that the login configuration granted
+    // nothing beyond public_profile.
+    if (error instanceof PlatformError && error.message.includes('#200')) {
+      const scopes = await grantedScopes(accessToken);
+      if (scopes) {
+        const missing = META_SCOPES.split(',').filter((scope) => !scopes.includes(scope));
+        throw new PlatformError(
+          missing.length > 0
+            ? `Meta menolak: token ini tidak membawa ${missing.join(' dan ')}. ` +
+              `Yang ada: ${scopes.join(', ') || 'tiada apa-apa'}. ` +
+              'Semak configuration Facebook Login for Business — permission dan aset "Ad accounts" — kemudian sambung semula.'
+            : `Meta menolak walaupun token membawa ${scopes.join(', ')}. ` +
+              'Biasanya ini bermakna akaun iklan belum diberikan kepada pengguna atau app ini dalam Business Settings.',
+          { status: error.status, needsReauth: true },
+        );
+      }
+    }
+    throw error;
+  }
 
   return (body.data ?? []).map((row) => ({
     id: row.id,
