@@ -363,42 +363,71 @@ export async function fetchMetaCreatives(options: {
     ? options.accountId
     : `act_${options.accountId}`;
 
-  const params: Record<string, string> = {
-    access_token: options.accessToken,
-    fields: CREATIVE_FIELDS,
-    limit: '200',
-  };
+  const filtering =
+    options.campaignIds && options.campaignIds.length > 0
+      ? JSON.stringify([{ field: 'campaign.id', operator: 'IN', value: options.campaignIds }])
+      : null;
 
-  if (options.campaignIds && options.campaignIds.length > 0) {
-    params.filtering = JSON.stringify([
-      { field: 'campaign.id', operator: 'IN', value: options.campaignIds },
-    ]);
+  // Meta weighs a page by fields × rows, and these fields nest three deep, so a
+  // page size that is fine for insights is refused here. Start modest, and if
+  // Meta still calls it too much, list again from the top at half the size —
+  // restarting rather than resuming, so no ad is read twice.
+  let limit = 25;
+
+  for (;;) {
+    try {
+      return await listCreativePages({
+        account,
+        accessToken: options.accessToken,
+        filtering,
+        limit,
+      });
+    } catch (error) {
+      if (!isTooMuchData(error) || limit <= 5) throw error;
+      limit = Math.max(5, Math.floor(limit / 2));
+    }
   }
+}
 
+async function listCreativePages(input: {
+  account: string;
+  accessToken: string;
+  filtering: string | null;
+  limit: number;
+}): Promise<MetaCreativeAsset[]> {
   const assets: MetaCreativeAsset[] = [];
   let url: string | null = null;
   let pages = 0;
 
   do {
     const body: { data?: MetaAdRow[]; paging?: { next?: string } } = url
-      ? await (async () => {
-          const response = await fetchWithTimeout(url as string, { cache: 'no-store' }, 'Meta');
-          const parsed = await readJson<{ data?: MetaAdRow[]; paging?: { next?: string } } & MetaErrorBody>(
-            response,
-            'Meta',
-          );
-          if (!response.ok || parsed.error) throw metaError(parsed, response.status);
-          return parsed;
-        })()
-      : await graph(`/${account}/ads`, params);
+      ? await graphUrl(url)
+      : await graph(`/${input.account}/ads`, {
+          access_token: input.accessToken,
+          fields: CREATIVE_FIELDS,
+          limit: String(input.limit),
+          ...(input.filtering ? { filtering: input.filtering } : {}),
+        });
 
     for (const row of body.data ?? []) assets.push(readCreative(row));
 
     url = body.paging?.next ?? null;
     pages += 1;
-  } while (url && pages < 50);
+  } while (url && pages < 200);
 
   return assets;
+}
+
+function isTooMuchData(error: unknown): boolean {
+  return error instanceof PlatformError && /reduce the amount of data/i.test(error.message);
+}
+
+/** Follows a paging URL, which already carries its own token and cursor. */
+async function graphUrl<T>(url: string): Promise<T> {
+  const response = await fetchWithTimeout(url, { cache: 'no-store' }, 'Meta');
+  const parsed = await readJson<T & MetaErrorBody>(response, 'Meta');
+  if (!response.ok || parsed.error) throw metaError(parsed, response.status);
+  return parsed;
 }
 
 // ── insights ────────────────────────────────────────────────────────────────
