@@ -20,6 +20,9 @@ export function metaConfig() {
   return {
     appId: process.env.META_APP_ID?.trim() ?? '',
     appSecret: process.env.META_APP_SECRET?.trim() ?? '',
+    // Only set for Facebook Login for Business. Optional, so it is not part of
+    // the readiness check.
+    loginConfigId: process.env.META_LOGIN_CONFIG_ID?.trim() || null,
   };
 }
 

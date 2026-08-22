@@ -16,18 +16,32 @@ const GRAPH = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 /** Read-only. `business_management` is what lets us list the ad accounts. */
 export const META_SCOPES = ['ads_read', 'business_management'].join(',');
 
+/**
+ * Apps created through Meta's use-case flow get **Facebook Login for Business**
+ * rather than plain Facebook Login, and that variant asks for a `config_id`
+ * naming a saved permission configuration instead of a `scope` list. Sending
+ * `scope` to it produces a consent screen that grants nothing, which then
+ * surfaces much later as an empty ad-account list rather than as a login error.
+ *
+ * Both are supported: set `META_LOGIN_CONFIG_ID` for the business flow, leave
+ * it empty for the classic one.
+ */
 export function metaAuthUrl(input: {
   appId: string;
   redirectUri: string;
   state: string;
+  configId?: string | null;
 }): string {
   const params = new URLSearchParams({
     client_id: input.appId,
     redirect_uri: input.redirectUri,
     state: input.state,
-    scope: META_SCOPES,
     response_type: 'code',
   });
+
+  if (input.configId) params.set('config_id', input.configId);
+  else params.set('scope', META_SCOPES);
+
   return `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth?${params}`;
 }
 

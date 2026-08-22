@@ -174,3 +174,26 @@ test('Google consent URL requests offline access, or the token dies in an hour',
   assert.equal(url.searchParams.get('prompt'), 'consent');
   assert.equal(url.searchParams.get('scope'), GOOGLE_ADS_SCOPE);
 });
+
+// ── Facebook Login for Business ─────────────────────────────────────────────
+// Apps created through the use-case flow get the business login variant, which
+// takes a saved configuration id rather than a scope list.
+
+test('metaAuthUrl sends config_id, and no scope, when one is configured', () => {
+  const url = new URL(
+    metaAuthUrl({ appId: '123', redirectUri: 'https://x.test/cb', state: 'st', configId: 'cfg_9' }),
+  );
+  assert.equal(url.searchParams.get('config_id'), 'cfg_9');
+  assert.equal(url.searchParams.get('scope'), null, 'scope and config_id are mutually exclusive');
+  assert.equal(url.searchParams.get('response_type'), 'code');
+});
+
+test('metaAuthUrl falls back to the classic scope list without one', () => {
+  for (const configId of [undefined, null, '']) {
+    const url = new URL(
+      metaAuthUrl({ appId: '123', redirectUri: 'https://x.test/cb', state: 'st', configId }),
+    );
+    assert.equal(url.searchParams.get('scope'), 'ads_read,business_management');
+    assert.equal(url.searchParams.get('config_id'), null);
+  }
+});

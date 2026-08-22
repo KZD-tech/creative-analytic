@@ -263,6 +263,7 @@ semua ini):
 | `TOKEN_ENCRYPTION_KEY` | kedua-dua | `openssl rand -base64 32`. Wajib sebelum mana-mana butang sambung muncul |
 | `META_APP_ID` | Meta Ads | App Dashboard → Settings → Basic |
 | `META_APP_SECRET` | Meta Ads | tempat sama |
+| `META_LOGIN_CONFIG_ID` | Meta Ads | hanya untuk app "Facebook Login for Business" — iaitu semua app baharu |
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads | Google Ads MCC → API Center |
 | `GOOGLE_ADS_CLIENT_ID` | Google Ads | jatuh balik kepada `GOOGLE_CLIENT_ID` |
 | `GOOGLE_ADS_CLIENT_SECRET` | Google Ads | jatuh balik kepada `GOOGLE_CLIENT_SECRET` |

@@ -65,9 +65,31 @@ panel akan menyebut nama env yang belum diisi.
 2. Jenis: **Business**
 3. Tambah produk **Facebook Login**, kemudian **Marketing API**
 
-### 2. Redirect URI
+### 2. Konfigurasi Facebook Login for Business
 
-**Facebook Login → Settings → Valid OAuth Redirect URIs**:
+App yang dibuat melalui aliran *use case* mendapat **Facebook Login for
+Business**, bukan Facebook Login biasa. Perbezaannya penting: variant business
+meminta **config ID** yang menamakan satu set permission yang disimpan, dan
+mengabaikan senarai `scope` yang dihantar dalam URL.
+
+Kalau langkah ini dilangkau, skrin kebenaran tetap muncul dan kelihatan
+berjaya — tetapi tiada permission diberi, dan ralatnya hanya menampakkan diri
+kemudian sebagai *"Tiada akaun iklan pada akaun Meta ini"*.
+
+1. Sidebar → **Facebook Login for Business** → **Configurations** → **Create
+   configuration**
+2. Beri nama (contoh: `Creative Analytic — baca`)
+3. Login variant: **Business login**
+4. Assets: **Ad accounts**
+5. Permissions: tandakan `ads_read` dan `business_management`
+6. Simpan, kemudian salin **Configuration ID**
+
+Letak id itu sebagai `META_LOGIN_CONFIG_ID`.
+
+### 3. Redirect URI
+
+Sidebar → **Facebook Login for Business** → **Settings** → *Valid OAuth
+Redirect URIs*:
 
 ```
 https://creative-analytic.vercel.app/api/connect/meta/callback
@@ -76,25 +98,28 @@ https://creative-analytic.vercel.app/api/connect/meta/callback
 Tambah juga `http://localhost:3000/api/connect/meta/callback` kalau anda
 membangunkan secara tempatan.
 
-### 3. Kekal dalam Development Mode
+### 4. Kekal dalam Development Mode
 
 Ini yang menjimatkan berminggu-minggu. Skop `ads_read` dan
 `business_management` berfungsi **tanpa App Review** untuk sesiapa yang ada
-peranan dalam app itu sendiri.
+peranan dalam app itu sendiri — jadi biarkan status **Unpublished**; ia bukan
+sesuatu yang perlu dibetulkan.
 
-**App Roles → Roles → Add People** → tambah setiap ahli pasukan Kaizen sebagai
-Admin, Developer atau Tester. Mereka juga perlu menerima jemputan di
+**App roles → Add people** → tambah setiap ahli pasukan Kaizen sebagai Admin,
+Developer atau Tester. Mereka juga perlu menerima jemputan di
 [developers.facebook.com/requests](https://developers.facebook.com/requests).
 
-App Review hanya perlu kalau orang luar (klien, agensi lain) akan menyambung
-akaun mereka sendiri.
+App Review dan **Become a Tech Provider** hanya perlu kalau orang luar (klien,
+agensi lain) akan menyambung akaun mereka sendiri. Untuk kegunaan dalaman,
+abaikan kedua-duanya.
 
-### 4. Env
+### 5. Env
 
 | Variable | Dari mana |
 |---|---|
-| `META_APP_ID` | App Dashboard → Settings → Basic → App ID |
+| `META_APP_ID` | App settings → Basic → App ID |
 | `META_APP_SECRET` | tempat sama → App Secret (klik **Show**) |
+| `META_LOGIN_CONFIG_ID` | Facebook Login for Business → Configurations (langkah 2) |
 | `META_GRAPH_VERSION` | pilihan; lalai `v21.0` |
 
 ### Apa yang ditarik
@@ -186,9 +211,11 @@ deployment sedia ada.
 **`Sesi tidak sepadan. Cuba lagi.`** — sesi berubah antara mula dan tamat
 aliran OAuth (biasanya log masuk di tab lain). Mula semula.
 
-**`Tiada akaun iklan pada akaun Meta ini`** — akaun Meta yang digunakan tiada
-akses Ads, atau peranan dalam app belum diterima di
-[developers.facebook.com/requests](https://developers.facebook.com/requests).
+**`Tiada akaun iklan pada akaun Meta ini`** — tiga sebab, semak ikut turutan
+ini: `META_LOGIN_CONFIG_ID` belum diisi (paling biasa untuk app baharu — lihat
+langkah 2); peranan dalam app belum diterima di
+[developers.facebook.com/requests](https://developers.facebook.com/requests);
+atau akaun Meta itu memang tiada akses Ads.
 
 **`Perlu sambung semula`** pada satu sambungan — platform menolak token itu
 (Meta OAuthException 190, atau Google `invalid_grant`). Klik **Sambung** sekali
