@@ -38,7 +38,16 @@ export function readSupabaseEnv(): EnvState {
  */
 export function siteUrl(): string {
   const configured = process.env.APP_URL?.trim();
-  if (configured) return configured.replace(/\/+$/, '');
+  // A custom domain is the one case Vercel's own variables cannot describe —
+  // `VERCEL_PROJECT_PRODUCTION_URL` keeps reporting the .vercel.app name — so
+  // APP_URL wins over everything. Typed by hand into a dashboard field, it
+  // arrives without a scheme often enough to be worth handling: a bare host
+  // would otherwise build a relative redirect that fails the Supabase
+  // allowlist for reasons the error message does not explain.
+  if (configured) {
+    const trimmed = configured.replace(/\/+$/, '');
+    return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  }
 
   const production = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
   if (production && process.env.VERCEL_ENV === 'production') return `https://${production}`;

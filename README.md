@@ -148,30 +148,36 @@ tiada redirect lain dinyatakan.
 
 | Anda jalankan di | Site URL |
 |---|---|
-| Vercel (produksi) | `https://creative-analytic.vercel.app` |
+| Produksi | `https://ihsanku.kaizendigital.my` |
 | Komputer sendiri | `http://localhost:3000` |
 
 **Redirect URLs** — boleh banyak, dan menyokong wildcard. Tambah setiap tempat
 aplikasi berjalan:
 
 ```
-https://creative-analytic.vercel.app/auth/callback
+https://ihsanku.kaizendigital.my/auth/callback
 http://localhost:3000/auth/callback
 https://creative-analytic-*.vercel.app/auth/callback
 ```
 
-Baris ketiga meliputi preview deployment Vercel, yang URL-nya berubah setiap
-kali anda push. Tanpa itu, log masuk pada preview akan ditolak dengan
+Baris ketiga meliputi preview deployment Vercel. Preview **kekal** pada domain
+`vercel.app` walaupun produksi sudah bertukar kepada domain tersuai, dan
+URL-nya berubah setiap kali anda push — jadi entri wildcard itu masih
+diperlukan. Tanpa itu, log masuk pada preview ditolak dengan
 `requested path is invalid`.
 
 Aplikasi membina redirect ini sendiri melalui `siteUrl()`:
 
-1. `APP_URL` kalau diset — gunakan ini untuk domain tersuai
+1. `APP_URL` kalau diset — inilah yang digunakan untuk domain tersuai
 2. Domain produksi Vercel yang stabil, bila `VERCEL_ENV=production`
 3. URL deployment Vercel, untuk preview
 4. `http://localhost:3000`
 
-Pastikan apa yang ia hasilkan ada dalam senarai Redirect URLs di atas.
+Kerana domain tersuai **tidak** muncul dalam `VERCEL_PROJECT_PRODUCTION_URL`,
+`APP_URL` mesti diset supaya langkah 1 mengambil alih. Tetapkannya pada
+environment **Production sahaja** — kalau ia dikongsi dengan Preview, setiap
+preview akan menghantar orang balik ke produksi dan anda tidak akan dapat
+menguji log masuk pada preview langsung.
 
 Akaun **pertama** yang mendaftar menjadi admin. Selepas itu, jemput orang lain
 di `/settings/team`.
@@ -310,14 +316,18 @@ dan bahawa permintaan tanpa log masuk tidak nampak apa-apa.
 
 ### 6. Deploy (Vercel)
 
-Deployment semasa: **https://creative-analytic.vercel.app**
+Deployment semasa: **https://ihsanku.kaizendigital.my**
 
 1. Import repo. Production branch ialah `claude/creative-dashboard-design-m5hi38`
    — repo ini belum ada `main`.
-2. **Settings → Environment Variables** → tambah `SUPABASE_URL`,
+2. **Settings → Domains** → tambah `ihsanku.kaizendigital.my`, kemudian buat
+   rekod DNS yang Vercel tunjukkan pada penyedia domain `kaizendigital.my`
+   (biasanya satu rekod `CNAME` menghala ke `cname.vercel-dns.com`).
+3. **Settings → Environment Variables** → tambah `SUPABASE_URL`,
    `SUPABASE_ANON_KEY` dan `SUPABASE_SERVICE_ROLE_KEY`, tandakan Production.
-   Biarkan `APP_URL` kosong; Vercel membekalkan domain produksinya sendiri.
-3. **Redeploy.** Perubahan environment variable **tidak** terpakai pada
+   Tambah juga `APP_URL=https://ihsanku.kaizendigital.my` — **Production
+   sahaja**, jangan tandakan Preview.
+4. **Redeploy.** Perubahan environment variable **tidak** terpakai pada
    deployment yang sudah wujud — ini punca paling biasa bila env sudah diisi
    tetapi ralat lama masih muncul.
 

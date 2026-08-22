@@ -92,7 +92,7 @@ Sidebar → **Facebook Login for Business** → **Settings** → *Valid OAuth
 Redirect URIs*:
 
 ```
-https://creative-analytic.vercel.app/api/connect/meta/callback
+https://ihsanku.kaizendigital.my/api/connect/meta/callback
 ```
 
 Tambah juga `http://localhost:3000/api/connect/meta/callback` kalau anda
@@ -153,7 +153,7 @@ Client OAuth yang sama seperti log masuk Google boleh digunakan semula —
 hanya tambah callback ini pada **Authorized redirect URIs**:
 
 ```
-https://creative-analytic.vercel.app/api/connect/google-ads/callback
+https://ihsanku.kaizendigital.my/api/connect/google-ads/callback
 ```
 
 Dan hidupkan **Google Ads API** di

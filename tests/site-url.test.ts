@@ -57,3 +57,30 @@ test('a preview deployment keeps its own URL', () => {
 test('local development falls back to localhost', () => {
   withEnv({}, () => assert.equal(siteUrl(), 'http://localhost:3000'));
 });
+
+test('APP_URL without a scheme is still a usable origin', () => {
+  // Custom domains get typed into the Vercel dashboard by hand, and "https://"
+  // is the part people leave off.
+  withEnv({ APP_URL: 'ihsanku.kaizendigital.my' }, () =>
+    assert.equal(siteUrl(), 'https://ihsanku.kaizendigital.my'),
+  );
+});
+
+test('APP_URL wins over the Vercel production domain', () => {
+  // The custom domain never appears in Vercel's own variables, so this
+  // precedence is what makes a custom domain work at all.
+  withEnv(
+    {
+      APP_URL: 'https://ihsanku.kaizendigital.my',
+      VERCEL_ENV: 'production',
+      VERCEL_PROJECT_PRODUCTION_URL: 'creative-analytic.vercel.app',
+    },
+    () => assert.equal(siteUrl(), 'https://ihsanku.kaizendigital.my'),
+  );
+});
+
+test('a trailing slash never doubles up in a built callback URL', () => {
+  withEnv({ APP_URL: 'https://ihsanku.kaizendigital.my/' }, () =>
+    assert.equal(`${siteUrl()}/auth/callback`, 'https://ihsanku.kaizendigital.my/auth/callback'),
+  );
+});
