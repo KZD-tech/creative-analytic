@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
-import { exchangeMetaCode, listMetaAdAccounts, missingScopes } from '@/lib/connections/meta';
+import { exchangeMetaCode, listMetaAdAccounts } from '@/lib/connections/meta';
 
 const INPUT = {
   appId: '123',
@@ -82,133 +82,110 @@ test('a failure on the first hop is still an error', async () => {
   await assert.rejects(() => exchangeMetaCode(INPUT), /Invalid verification code/);
 });
 
-// ── diagnosing (#200) Missing Permissions ───────────────────────────────────
-// Meta names neither the permission nor the token in that error, so the
-// listing asks the token what it actually carries before giving up.
+// ── finding the ad accounts ─────────────────────────────────────────────────
+// Which Graph edge answers depends on the kind of token, and Meta's refusal
+// when you ask the wrong one says nothing about the endpoint being wrong.
 
-test('a #200 is re-reported as the exact permissions the token is missing', async () => {
+const APP = { appId: '123', appSecret: 'secret' };
+
+test('a user token is served by /me/adaccounts', async () => {
+  const calls = stubGraph([
+    { body: { data: [{ id: 'act_1', name: 'Rumah Padi', currency: 'MYR', timezone_name: 'Asia/Kuala_Lumpur' }] } },
+  ]);
+
+  const accounts = await listMetaAdAccounts('token', APP);
+
+  assert.deepEqual(accounts, [
+    { id: 'act_1', name: 'Rumah Padi', currency: 'MYR', timezone: 'Asia/Kuala_Lumpur' },
+  ]);
+  assert.equal(calls.length, 1, 'the second edge is not tried once the first answers');
+});
+
+test('a system-user token falls through to /me/assigned_ad_accounts', async () => {
+  // The reason the whole flow was failing: /me/adaccounts is a User edge, and a
+  // system-user token resolves /me to a system user.
+  const calls = stubGraph([
+    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
+    { body: { data: [{ id: 'act_9', name: 'IhsanKu', currency: 'MYR' }] } },
+  ]);
+
+  const accounts = await listMetaAdAccounts('token', APP);
+
+  assert.equal(accounts[0].id, 'act_9');
+  assert.match(calls[1].pathname, /assigned_ad_accounts$/);
+});
+
+test('an empty first edge is not mistaken for an answer', async () => {
+  const calls = stubGraph([
+    { body: { data: [] } },
+    { body: { data: [{ id: 'act_9', name: 'IhsanKu' }] } },
+  ]);
+
+  const accounts = await listMetaAdAccounts('token', APP);
+
+  assert.equal(accounts[0].id, 'act_9');
+  assert.equal(calls.length, 2);
+});
+
+test('a system-user token with no assets is told to assign them, not to fix permissions', async () => {
   stubGraph([
     { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
-    { body: { data: [{ permission: 'public_profile', status: 'granted' }] } },
+    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
+    { body: { data: { type: 'SYSTEM_USER', scopes: ['ads_read'] } } },
   ]);
 
   await assert.rejects(
-    () => listMetaAdAccounts('token'),
+    () => listMetaAdAccounts('token', APP),
     (error: Error) => {
-      assert.match(error.message, /tidak membawa ads_read/);
-      assert.match(error.message, /Yang ada: public_profile/);
+      assert.match(error.message, /System users/);
+      assert.match(error.message, /Assign assets/);
+      assert.ok(!/permission dalam configuration/.test(error.message), 'does not blame the login config');
       return true;
     },
   );
 });
 
-test('a declined permission is not counted as granted', async () => {
+test('a user token genuinely lacking the scope is told so', async () => {
   stubGraph([
     { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
-    {
-      body: {
-        data: [
-          { permission: 'ads_read', status: 'declined' },
-          { permission: 'public_profile', status: 'granted' },
-        ],
-      },
-    },
+    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
+    { body: { data: { type: 'USER', scopes: ['public_profile', 'pages_show_list'] } } },
   ]);
 
   await assert.rejects(
-    () => listMetaAdAccounts('token'),
+    () => listMetaAdAccounts('token', APP),
     (error: Error) => {
       assert.match(error.message, /tidak membawa ads_read/);
+      assert.match(error.message, /public_profile, pages_show_list/);
       return true;
     },
   );
 });
 
-test('when every scope is present the message points at asset assignment instead', async () => {
+test('a user token that can read but sees nothing points at asset access', async () => {
   stubGraph([
     { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
-    {
-      body: {
-        data: [
-          { permission: 'ads_read', status: 'granted' },
-          { permission: 'business_management', status: 'granted' },
-        ],
-      },
-    },
+    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
+    { body: { data: { type: 'USER', scopes: ['ads_management'] } } },
   ]);
 
   await assert.rejects(
-    () => listMetaAdAccounts('token'),
+    () => listMetaAdAccounts('token', APP),
     (error: Error) => {
       assert.match(error.message, /Business Settings/);
+      assert.ok(!/tidak membawa/.test(error.message), 'ads_management already covers reading');
       return true;
     },
   );
 });
 
-test('the permissions lookup failing leaves the original error intact', async () => {
-  // The diagnostic is a convenience; it must never replace the real error.
+test('without an app credential the original Graph error survives', async () => {
+  // debug_token needs the app secret; with none, inventing a diagnosis would be
+  // worse than showing what Meta actually said.
   stubGraph([
     { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
-    { status: 500, body: { error: { message: 'try again later' } } },
+    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
   ]);
 
   await assert.rejects(() => listMetaAdAccounts('token'), /Missing Permissions/);
-});
-
-test('errors that are not #200 are passed through untouched', async () => {
-  const calls = stubGraph([
-    { status: 400, body: { error: { message: 'Invalid OAuth access token', code: 190 } } },
-  ]);
-
-  await assert.rejects(() => listMetaAdAccounts('token'), /Invalid OAuth access token/);
-  assert.equal(calls.length, 1, 'no permissions lookup for an unrelated failure');
-});
-
-// ── ads_management covers ads_read ──────────────────────────────────────────
-
-test('ads_management satisfies the read requirement', () => {
-  // A system-user configuration is often only offered the wider scope. Blaming
-  // ads_read there would send someone to fix a token that already works.
-  assert.deepEqual(missingScopes(['ads_management', 'business_management']), []);
-});
-
-test('ads_management alone is enough — business_management is not required', () => {
-  // Neither call this app makes needs it, and a Login for Business
-  // configuration names its assets instead of granting it.
-  assert.deepEqual(missingScopes(['ads_management']), []);
-  assert.deepEqual(missingScopes(['ads_read']), []);
-});
-
-test('the narrow scope on its own is enough for reading', () => {
-  assert.deepEqual(missingScopes(['ads_read', 'business_management']), []);
-});
-
-test('page scopes satisfy nothing', () => {
-  assert.deepEqual(missingScopes(['pages_show_list', 'pages_read_engagement', 'public_profile']), [
-    'ads_read',
-  ]);
-});
-
-test('a token carrying ads_management is not blamed for the wrong thing', async () => {
-  stubGraph([
-    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
-    {
-      body: {
-        data: [
-          { permission: 'ads_management', status: 'granted' },
-          { permission: 'business_management', status: 'granted' },
-        ],
-      },
-    },
-  ]);
-
-  await assert.rejects(
-    () => listMetaAdAccounts('token'),
-    (error: Error) => {
-      assert.match(error.message, /Business Settings/, 'points at asset assignment, not permissions');
-      assert.ok(!/tidak membawa/.test(error.message), 'nothing is reported as missing');
-      return true;
-    },
-  );
 });

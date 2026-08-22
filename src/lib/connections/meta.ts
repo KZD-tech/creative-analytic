@@ -148,83 +148,119 @@ export interface MetaAdAccount {
   timezone: string | null;
 }
 
+
 /**
- * Which of the scopes we need are genuinely absent.
+ * What Meta says about a token itself: its type, and the scopes on it.
  *
- * `ads_management` is a superset of `ads_read`, and a system-user login
- * configuration is often only offered the wider one. Comparing the granted
- * list literally would then report `ads_read` as missing on a token that can
- * already read everything this app asks for — sending the user to fix
- * something that is not broken.
+ * `/me/permissions` cannot answer this. That edge belongs to the User node, so
+ * on a **system-user** token it does not describe the token at all — it returns
+ * a list that stays identical however the login configuration is changed.
+ * Reporting that as "the permissions this token carries" turns a wrong endpoint
+ * into a confident, and consistently misleading, error message.
+ *
+ * `/debug_token` is authoritative, and it needs the app credential rather than
+ * the token being examined.
  */
-export function missingScopes(granted: string[]): string[] {
-  const covers: Record<string, string[]> = {
-    ads_read: ['ads_read', 'ads_management'],
-  };
+async function inspectToken(
+  accessToken: string,
+  app: { appId: string; appSecret: string },
+): Promise<{ type: string; scopes: string[] } | null> {
+  if (!app.appId || !app.appSecret) return null;
 
-  return META_REQUIRED_SCOPES.filter(
-    (needed) => !(covers[needed] ?? [needed]).some((scope) => granted.includes(scope)),
-  );
-}
-
-/**
- * Reads the scopes actually attached to a token. Best-effort: it exists to
- * improve an error message, so a failure here must not replace the error it
- * was called to explain.
- */
-async function grantedScopes(accessToken: string): Promise<string[] | null> {
   try {
-    const body = await graph<{ data?: { permission: string; status: string }[] }>(
-      '/me/permissions',
-      { access_token: accessToken },
-    );
-    return (body.data ?? [])
-      .filter((row) => row.status === 'granted')
-      .map((row) => row.permission);
+    const body = await graph<{ data?: { type?: string; scopes?: string[] } }>('/debug_token', {
+      input_token: accessToken,
+      access_token: `${app.appId}|${app.appSecret}`,
+    });
+    return { type: body.data?.type ?? 'UNKNOWN', scopes: body.data?.scopes ?? [] };
   } catch {
     return null;
   }
 }
 
-export async function listMetaAdAccounts(accessToken: string): Promise<MetaAdAccount[]> {
-  let body: { data: { id: string; name?: string; currency?: string; timezone_name?: string }[] };
+/**
+ * Lists the ad accounts a token can reach.
+ *
+ * Which edge answers depends on the kind of token. `/me/adaccounts` belongs to
+ * the User node; a system-user token resolves `/me` to a system user, whose ad
+ * accounts sit behind `assigned_ad_accounts` instead. Asking the wrong one
+ * earns a bare "(#200) Missing Permissions" that says nothing about the
+ * endpoint being wrong, so both are tried before blaming permissions.
+ */
+export async function listMetaAdAccounts(
+  accessToken: string,
+  app: { appId: string; appSecret: string } = { appId: '', appSecret: '' },
+): Promise<MetaAdAccount[]> {
+  type Row = { id: string; name?: string; currency?: string; timezone_name?: string };
+  let firstError: unknown = null;
 
-  try {
-    body = await graph('/me/adaccounts', {
-      access_token: accessToken,
-      fields: 'id,name,currency,timezone_name',
-      limit: '200',
-    });
-  } catch (error) {
-    // Meta answers a token that is missing `ads_read` with a bare
-    // "(#200) Missing Permissions", naming neither the permission nor the
-    // token. Asking the token what it carries turns that into something
-    // actionable — usually revealing that the login configuration granted
-    // nothing beyond public_profile.
-    if (error instanceof PlatformError && error.message.includes('#200')) {
-      const scopes = await grantedScopes(accessToken);
-      if (scopes) {
-        const missing = missingScopes(scopes);
-        throw new PlatformError(
-          missing.length > 0
-            ? `Meta menolak: token ini tidak membawa ${missing.join(' dan ')}. ` +
-              `Yang ada: ${scopes.join(', ') || 'tiada apa-apa'}. ` +
-              'Semak configuration Facebook Login for Business — permission dan aset "Ad accounts" — kemudian sambung semula.'
-            : `Meta menolak walaupun token membawa ${scopes.join(', ')}. ` +
-              'Biasanya ini bermakna akaun iklan belum diberikan kepada pengguna atau app ini dalam Business Settings.',
-          { status: error.status, needsReauth: true },
-        );
-      }
+  for (const edge of ['/me/adaccounts', '/me/assigned_ad_accounts']) {
+    try {
+      const body = await graph<{ data?: Row[] }>(edge, {
+        access_token: accessToken,
+        fields: 'id,name,currency,timezone_name',
+        limit: '200',
+      });
+
+      const rows = body.data ?? [];
+      // An empty list is not an answer — the other edge may hold the accounts.
+      if (rows.length === 0) continue;
+
+      return rows.map((row) => ({
+        id: row.id,
+        name: row.name ?? row.id,
+        currency: row.currency ?? null,
+        timezone: row.timezone_name ?? null,
+      }));
+    } catch (error) {
+      firstError ??= error;
     }
-    throw error;
   }
 
-  return (body.data ?? []).map((row) => ({
-    id: row.id,
-    name: row.name ?? row.id,
-    currency: row.currency ?? null,
-    timezone: row.timezone_name ?? null,
-  }));
+  throw await explainNoAccounts(accessToken, app, firstError);
+}
+
+async function explainNoAccounts(
+  accessToken: string,
+  app: { appId: string; appSecret: string },
+  cause: unknown,
+): Promise<PlatformError> {
+  const info = await inspectToken(accessToken, app);
+
+  if (!info) {
+    return cause instanceof PlatformError
+      ? cause
+      : new PlatformError('Meta tidak memulangkan sebarang akaun iklan untuk token ini.', {
+          needsReauth: true,
+        });
+  }
+
+  // A system-user token draws its reach from asset assignment, not from scopes.
+  // Pointing at the permission list here would send someone to the wrong screen.
+  if (info.type.toUpperCase().includes('SYSTEM')) {
+    return new PlatformError(
+      'Token system-user ini tidak nampak sebarang akaun iklan. Akaun iklan mesti diberikan ' +
+        'kepada system user itu sendiri: Business Settings → Users → System users → pilih ' +
+        'system user → Assign assets → Ad accounts. Menyambungkan akaun iklan kepada app ' +
+        'sahaja tidak mencukupi.',
+      { needsReauth: false },
+    );
+  }
+
+  const canRead = info.scopes.some((s) => s === 'ads_read' || s === 'ads_management');
+  if (!canRead) {
+    return new PlatformError(
+      `Token ini tidak membawa ads_read. Yang ada: ${info.scopes.join(', ') || 'tiada apa-apa'}. ` +
+        'Semak permission dalam configuration Facebook Login for Business, kemudian sambung semula.',
+      { needsReauth: true },
+    );
+  }
+
+  return new PlatformError(
+    `Token membawa ${info.scopes.join(', ')} tetapi tiada akaun iklan boleh dicapai. ` +
+      'Semak akaun iklan sudah diberikan kepada pengguna ini dalam Business Settings.',
+    { needsReauth: false },
+  );
 }
 
 // ── insights ────────────────────────────────────────────────────────────────

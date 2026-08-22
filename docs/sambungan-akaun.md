@@ -229,11 +229,24 @@ deployment sedia ada.
 **`Sesi tidak sepadan. Cuba lagi.`** — sesi berubah antara mula dan tamat
 aliran OAuth (biasanya log masuk di tab lain). Mula semula.
 
-**`Tiada akaun iklan pada akaun Meta ini`** — tiga sebab, semak ikut turutan
-ini: `META_LOGIN_CONFIG_ID` belum diisi (paling biasa untuk app baharu — lihat
-langkah 2); peranan dalam app belum diterima di
-[developers.facebook.com/requests](https://developers.facebook.com/requests);
-atau akaun Meta itu memang tiada akses Ads.
+**`Token system-user ini tidak nampak sebarang akaun iklan`** — akaun iklan
+belum diberikan kepada **system user** itu sendiri. Ini langkah yang paling
+kerap terlepas, kerana ada dua tempat berbeza yang kelihatan seperti jawapannya
+dan hanya satu yang betul:
+
+| Skrin | Apa ia buat | Cukup? |
+|---|---|---|
+| Business Settings → **Apps** → Connect assets | menyambung akaun iklan kepada *app* | **tidak** |
+| Business Settings → **Users → System users** → Assign assets | memberi akaun iklan kepada *system user* | **ya** |
+
+Token system-user mendapat capaiannya daripada apa yang diberikan kepada system
+user itu — bukan daripada permission, dan bukan daripada apa yang app pegang.
+
+**`Token ini tidak membawa ads_read`** — pada token *pengguna*, ini bermakna
+configuration login tidak memberi permission itu. Semak langkah 2, kemudian
+sambung semula selepas membuang kebenaran lama di
+[business.facebook.com/settings](https://business.facebook.com/settings) →
+Integrations → Business Integrations.
 
 **`Perlu sambung semula`** pada satu sambungan — platform menolak token itu
 (Meta OAuthException 190, atau Google `invalid_grant`). Klik **Sambung** sekali

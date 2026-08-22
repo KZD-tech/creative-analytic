@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       code,
     });
 
-    const accounts = await listMetaAdAccounts(token.accessToken);
+    const accounts = await listMetaAdAccounts(token.accessToken, { appId, appSecret });
     if (accounts.length === 0) {
       return backToData(
         state.campaignId,
