@@ -1,5 +1,5 @@
 import 'server-only';
-import { fetchMetaInsights } from './meta';
+import { fetchMetaCreatives, fetchMetaInsights } from './meta';
 import { fetchGoogleAdsInsights, refreshGoogleToken } from './googleAds';
 import { googleAdsConfig } from './config';
 import { needsReauth } from './http';
@@ -7,7 +7,7 @@ import { extendCover, pendingWindows, type Window } from './windows';
 import {
   readConnectionSecrets, recordCover, recordSync, updateAccessToken, type CampaignSource,
 } from '@/lib/db/connections';
-import { writeAdMetrics } from '@/lib/db/ingest';
+import { applyCreativeAssets, writeAdMetrics } from '@/lib/db/ingest';
 import type { IngestResult, NormalizedAdMetric } from '@/lib/ingest/adapter';
 
 export interface SyncOutcome {
@@ -99,6 +99,30 @@ export async function syncSource(
       done += 1;
 
       if (Date.now() >= deadline) break;
+    }
+
+    // Once per run, not once per window: creative assets do not change by the
+    // day, and the numbers are the part worth spending the budget on.
+    if (platform === 'meta' && rows > 0) {
+      try {
+        const assets = await fetchMetaCreatives({
+          accessToken,
+          accountId: source.connection.external_account_id,
+          campaignIds: source.platform_campaign_ids,
+        });
+        const applied = await applyCreativeAssets(source.campaign_id, assets);
+        if (applied === 0 && assets.length > 0) {
+          warnings.push('Aset kreatif ditarik tetapi tiada yang sepadan dengan iklan tersimpan.');
+        }
+      } catch (error) {
+        // A missing thumbnail is not a reason to fail a sync that already
+        // delivered the numbers.
+        warnings.push(
+          `Gambar dan teks iklan tidak dapat ditarik: ${
+            error instanceof Error ? error.message : 'sebab tidak diketahui'
+          }`,
+        );
+      }
     }
 
     await recordSync(source.connection_id, { rows });

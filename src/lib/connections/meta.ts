@@ -290,6 +290,117 @@ export async function describeMetaAdAccount(
   };
 }
 
+// ── creative assets ─────────────────────────────────────────────────────────
+
+/**
+ * The insights endpoint reports numbers and nothing else — no image, no
+ * headline, no body copy. Those live on the ad's creative, which is a separate
+ * call. Without it the creative grid renders fifty cards that are only names.
+ */
+export interface MetaCreativeAsset {
+  externalAdId: string;
+  adName: string;
+  thumbnailUrl: string | null;
+  headline: string | null;
+  bodyCopy: string | null;
+  landingUrl: string | null;
+}
+
+interface MetaAdRow {
+  id: string;
+  name?: string;
+  creative?: {
+    thumbnail_url?: string;
+    image_url?: string;
+    title?: string;
+    body?: string;
+    object_story_spec?: {
+      link_data?: { message?: string; name?: string; link?: string };
+      video_data?: { message?: string; title?: string; call_to_action?: { value?: { link?: string } } };
+    };
+    asset_feed_spec?: {
+      bodies?: { text?: string }[];
+      titles?: { text?: string }[];
+      link_urls?: { website_url?: string }[];
+    };
+  };
+}
+
+const CREATIVE_FIELDS =
+  'id,name,creative{thumbnail_url,image_url,title,body,object_story_spec,asset_feed_spec}';
+
+/**
+ * Meta scatters the same three pieces of text across three shapes depending on
+ * how the ad was built: a plain creative, a story spec, or a dynamic asset
+ * feed. Reading only one of them leaves most of a real account blank.
+ */
+function readCreative(row: MetaAdRow): MetaCreativeAsset {
+  const c = row.creative ?? {};
+  const link = c.object_story_spec?.link_data;
+  const video = c.object_story_spec?.video_data;
+  const feed = c.asset_feed_spec;
+
+  return {
+    externalAdId: row.id,
+    adName: row.name?.trim() ?? row.id,
+    thumbnailUrl: c.thumbnail_url ?? c.image_url ?? null,
+    headline: c.title ?? link?.name ?? video?.title ?? feed?.titles?.[0]?.text ?? null,
+    bodyCopy: c.body ?? link?.message ?? video?.message ?? feed?.bodies?.[0]?.text ?? null,
+    landingUrl:
+      link?.link ??
+      video?.call_to_action?.value?.link ??
+      feed?.link_urls?.[0]?.website_url ??
+      null,
+  };
+}
+
+export async function fetchMetaCreatives(options: {
+  accessToken: string;
+  accountId: string;
+  campaignIds?: string[];
+}): Promise<MetaCreativeAsset[]> {
+  const account = options.accountId.startsWith('act_')
+    ? options.accountId
+    : `act_${options.accountId}`;
+
+  const params: Record<string, string> = {
+    access_token: options.accessToken,
+    fields: CREATIVE_FIELDS,
+    limit: '200',
+  };
+
+  if (options.campaignIds && options.campaignIds.length > 0) {
+    params.filtering = JSON.stringify([
+      { field: 'campaign.id', operator: 'IN', value: options.campaignIds },
+    ]);
+  }
+
+  const assets: MetaCreativeAsset[] = [];
+  let url: string | null = null;
+  let pages = 0;
+
+  do {
+    const body: { data?: MetaAdRow[]; paging?: { next?: string } } = url
+      ? await (async () => {
+          const response = await fetchWithTimeout(url as string, { cache: 'no-store' }, 'Meta');
+          const parsed = await readJson<{ data?: MetaAdRow[]; paging?: { next?: string } } & MetaErrorBody>(
+            response,
+            'Meta',
+          );
+          if (!response.ok || parsed.error) throw metaError(parsed, response.status);
+          return parsed;
+        })()
+      : await graph(`/${account}/ads`, params);
+
+    for (const row of body.data ?? []) assets.push(readCreative(row));
+
+    url = body.paging?.next ?? null;
+    pages += 1;
+  } while (url && pages < 50);
+
+  return assets;
+}
+
 // ── insights ────────────────────────────────────────────────────────────────
 
 const INSIGHT_FIELDS = [

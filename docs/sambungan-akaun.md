@@ -142,7 +142,9 @@ abaikan kedua-duanya.
 
 ### Apa yang ditarik
 
-`level=ad`, `time_increment=1` (satu baris per iklan per hari — inilah yang
+Dua panggilan berasingan, kerana Meta memisahkan nombor daripada kreatif.
+
+**Insights** — `level=ad`, `time_increment=1` (satu baris per iklan per hari — inilah yang
 menghidupkan semua graf trend), medan: spend, impressions, reach, frequency,
 clicks, link clicks, landing page views, video views + kuartil, actions dan
 action_values.
@@ -150,6 +152,34 @@ action_values.
 Derma dibaca daripada `actions`/`action_values` dengan memilih mengikut
 `action_type` (`purchase`, kemudian `offsite_conversion.fb_pixel_purchase`),
 **bukan** mengikut kedudukan dalam array — susunan array Meta tidak stabil.
+
+**Aset kreatif** — gambar, headline, body copy dan pautan. Endpoint insights
+tidak memulangkan satu pun daripadanya, jadi grid kreatif akan memaparkan kad
+kosong tanpa panggilan kedua ini.
+
+Meta menyimpan tiga medan yang sama pada tiga tempat berbeza bergantung pada
+cara iklan dibina — creative biasa, `object_story_spec`, atau `asset_feed_spec`
+untuk iklan dinamik. Ketiga-tiganya dibaca; membaca satu sahaja meninggalkan
+kebanyakan akaun sebenar kosong.
+
+Ia ditarik **sekali setiap segerak**, bukan sekali setiap ketulan: gambar iklan
+tidak berubah dari hari ke hari, dan nombor yang berbaloi menghabiskan
+belanjawan masa.
+
+### Hasil dan derma datang dari Onpay, bukan Meta
+
+KPI **Hasil** dan **Derma** dikira daripada jadual `conversions`, yang diisi
+oleh muat naik CSV Onpay — bukan daripada Meta.
+
+Ini disengajakan. Derma berlaku di Onpay, jadi pixel Meta tidak nampak
+kebanyakannya, dan angka yang dilaporkan Meta selalunya tidak sepadan dengan
+apa yang benar-benar masuk ke akaun bank. Onpay ialah kebenarannya.
+
+Nombor Meta sendiri tetap disimpan (`platform_purchases`, `platform_revenue`)
+untuk perbandingan, tetapi tidak digunakan sebagai Hasil.
+
+Jadi: **selepas menyambung Meta, ROAS akan kekal 0.00x sehingga CSV Onpay
+dimuat naik.** Belanja, funnel dan kreatif berfungsi tanpanya; wang tidak.
 
 ---
 

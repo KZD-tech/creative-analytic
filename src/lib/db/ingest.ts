@@ -677,3 +677,63 @@ export async function rollbackBatch(campaignId: string, batchId: string): Promis
 
   return snapshot.length;
 }
+
+/**
+ * Fills in what the insights endpoint never returns: thumbnail, headline, body
+ * copy and landing URL.
+ *
+ * Matched on `external_ad_id` rather than on the name. Two ads can share a name
+ * across ad sets, and a rename would otherwise orphan everything attached to
+ * the old one — the id is what actually identifies the ad.
+ *
+ * Only non-empty values are written, so a creative that has copy from a CSV
+ * upload does not lose it to an ad whose fields came back blank.
+ */
+export async function applyCreativeAssets(
+  campaignId: string,
+  assets: {
+    externalAdId: string;
+    adName: string;
+    thumbnailUrl: string | null;
+    headline: string | null;
+    bodyCopy: string | null;
+    landingUrl: string | null;
+  }[],
+): Promise<number> {
+  if (assets.length === 0) return 0;
+
+  const supabase = await db();
+  const byName = await ensureCreatives(campaignId, assets.map((a) => ({ ad_name: a.adName })));
+  let applied = 0;
+
+  for (const part of chunk(assets, 50)) {
+    await Promise.all(
+      part.map(async (asset) => {
+        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (asset.thumbnailUrl) {
+          patch.media_url = asset.thumbnailUrl;
+          patch.thumbnail_url = asset.thumbnailUrl;
+          patch.media_kind = 'image';
+        }
+        if (asset.headline) patch.headline = asset.headline;
+        if (asset.bodyCopy) patch.body_copy = asset.bodyCopy;
+        if (asset.landingUrl) {
+          patch.landing_url = asset.landingUrl;
+          patch.landing_key = landingKey(asset.landingUrl);
+        }
+
+        // Nothing but a timestamp to write means the ad carries no assets.
+        if (Object.keys(patch).length === 1) return;
+
+        const query = supabase.from('creatives').update(patch).eq('campaign_id', campaignId);
+        const { error } = await (asset.externalAdId
+          ? query.eq('external_ad_id', asset.externalAdId)
+          : query.eq('id', byName.get(adNameKey(asset.adName)) ?? ''));
+
+        if (!error) applied += 1;
+      }),
+    );
+  }
+
+  return applied;
+}
