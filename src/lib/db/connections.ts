@@ -15,12 +15,15 @@ export interface AdConnection {
   last_sync_at: string | null;
   last_sync_error: string | null;
   last_sync_rows: number;
+  synced_from: string | null;
+  synced_through: string | null;
   created_at: string;
 }
 
 /** Columns that are safe to hand to a page. Never the token columns. */
 const SAFE = `id, platform, external_account_id, account_name, currency, timezone,
-  login_customer_id, status, last_sync_at, last_sync_error, last_sync_rows, created_at`;
+  login_customer_id, status, last_sync_at, last_sync_error, last_sync_rows,
+  synced_from, synced_through, created_at`;
 
 export interface CampaignSource {
   id: string;
@@ -184,4 +187,16 @@ export async function unlinkCampaign(sourceId: string): Promise<void> {
   const supabase = await db();
   const { error } = await supabase.from('campaign_sources').delete().eq('id', sourceId);
   if (error) throw new Error(error.message);
+}
+
+/** Records how far back and how far forward a connection has been pulled. */
+export async function recordCover(
+  connectionId: string,
+  cover: { from: string; through: string },
+): Promise<void> {
+  const supabase = await db();
+  await supabase
+    .from('ad_connections')
+    .update({ synced_from: cover.from, synced_through: cover.through })
+    .eq('id', connectionId);
 }

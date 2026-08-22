@@ -54,7 +54,16 @@ export async function syncCampaignAction(
         warnings: [...warnings, ...failed.map((f) => f.message)],
       };
     }
-    return { ok: true, message: `${rows} baris ditarik daripada ${outcomes.length} akaun.`, warnings };
+    // A run that stopped on its budget is not finished; saying so is the
+    // difference between "press it again" and "this is all there is".
+    const more = outcomes.some((outcome) => outcome.more);
+    return {
+      ok: true,
+      message: more
+        ? `${rows} baris ditarik setakat ini. Masih ada tempoh yang belum ditarik — tekan sekali lagi.`
+        : `${rows} baris ditarik daripada ${outcomes.length} akaun.`,
+      warnings,
+    };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Penyegerakan gagal.' };
   }

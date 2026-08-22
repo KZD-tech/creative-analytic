@@ -237,6 +237,42 @@ sudah dikendalikan:
 
 ---
 
+## Bagaimana penyegerakan berjalan
+
+Tarikan pertama sebulan data harian peringkat iklan lebih besar daripada apa
+yang muat dalam satu permintaan. Daripada gagal, ia dipecahkan:
+
+1. Tempoh sasaran (30 hari) dibahagi kepada ketulan seminggu
+2. Ketulan **terbaharu ditarik dahulu** — hari yang orang benar-benar lihat
+3. Selepas setiap ketulan, julat yang sudah diliputi disimpan
+4. Bila belanjawan masa habis, ia berhenti dan melaporkan setakat mana
+
+Kerana julat itu disimpan selepas setiap ketulan, tarikan yang terputus
+**menyambung** dan bukan bermula semula. Tekan Segerak sekali lagi, atau biarkan
+cron mengambil alih.
+
+Segerak berikutnya jauh lebih ringan: hanya hari selepas apa yang sudah
+diliputi, ditambah **tiga hari tindanan** — Meta dan Google masih melaraskan
+angka beberapa hari selepas fakta, jadi menganggap semalam sudah muktamad akan
+membekukan nombor yang masih bergerak.
+
+### Berjadual
+
+`vercel.json` mendaftarkan cron harian pada 2 pagi UTC. Ia memerlukan satu env:
+
+```
+CRON_SECRET=<openssl rand -base64 32>
+```
+
+Vercel menghantarnya sebagai `Authorization: Bearer …`. Tanpa env itu, endpoint
+menolak semua permintaan — ia berjalan sebagai service role di luar mana-mana
+sesi pengguna, jadi ia gagal tertutup.
+
+> Vercel Hobby hanya membenarkan satu cron sehari. Pada Pro, tukar `schedule`
+> dalam `vercel.json` kepada sesuatu seperti `0 */6 * * *`.
+
+---
+
 ## Selepas menyambung
 
 Panel di tab **Data** menyenaraikan setiap akaun yang bersambung. Untuk setiap
