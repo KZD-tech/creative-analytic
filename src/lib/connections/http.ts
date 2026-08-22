@@ -51,3 +51,28 @@ export async function readJson<T>(response: Response, label: string): Promise<T>
     );
   }
 }
+
+/**
+ * A platform call that hangs is worse than one that fails: the whole request
+ * runs out of time, and a serverless timeout carries no message at all — the
+ * user is told an unknown error occurred. Failing on our own terms keeps the
+ * reason attached.
+ */
+export const PLATFORM_TIMEOUT_MS = 20_000;
+
+export async function fetchWithTimeout(
+  url: string | URL,
+  init: RequestInit,
+  label: string,
+): Promise<Response> {
+  try {
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(PLATFORM_TIMEOUT_MS) });
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+    throw new PlatformError(
+      timedOut
+        ? `${label} tidak menjawab dalam ${PLATFORM_TIMEOUT_MS / 1000} saat. Cuba tempoh yang lebih pendek.`
+        : `${label} tidak dapat dihubungi: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}

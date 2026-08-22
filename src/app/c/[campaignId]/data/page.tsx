@@ -16,6 +16,12 @@ import { dateTime } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
+// Server actions on this page inherit this. Pulling a month of ad-level daily
+// rows, paging through the platform and writing them, does not fit in the
+// default limit — and running out of time surfaces as an unexplained failure
+// rather than a timeout.
+export const maxDuration = 60;
+
 const KIND_LABEL: Record<string, string> = {
   fb_ads: 'Meta Ads',
   conversions: 'Derma',

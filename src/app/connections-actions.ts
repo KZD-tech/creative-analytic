@@ -19,11 +19,15 @@ export async function syncCampaignAction(
   _prev: ConnectionResult | null,
   formData: FormData,
 ): Promise<ConnectionResult> {
-  await requireUser();
   const campaignId = String(formData.get('campaign_id') ?? '');
   if (!campaignId) return { ok: false, message: 'Kempen tidak dinyatakan.' };
 
   try {
+    // Inside the try on purpose. Next.js replaces anything a server action
+    // throws with "An unknown error occurred", so an error that escapes here
+    // reaches the user stripped of everything that would explain it.
+    await requireUser();
+
     const campaign = await getCampaign(campaignId);
     if (!campaign) return { ok: false, message: 'Kempen tidak dijumpai.' };
 

@@ -63,3 +63,50 @@ test('a successful response that is not JSON is reported as unreadable, not as a
     },
   );
 });
+
+// ── timeouts ────────────────────────────────────────────────────────────────
+// A serverless function that runs out of time reports nothing useful, so a
+// hanging platform call has to fail on our own terms first.
+
+test('a hanging call fails with a message naming the platform', async () => {
+  const { fetchWithTimeout, PLATFORM_TIMEOUT_MS } = await import('../src/lib/connections/http');
+  const original = globalThis.fetch;
+
+  // Reject the way fetch does when its AbortSignal fires.
+  globalThis.fetch = (async () => {
+    const error = new Error('The operation was aborted due to timeout');
+    error.name = 'TimeoutError';
+    throw error;
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => fetchWithTimeout('https://example.test', {}, 'Meta'),
+      (error: PlatformError) => {
+        assert.match(error.message, /Meta tidak menjawab/);
+        assert.match(error.message, new RegExp(`${PLATFORM_TIMEOUT_MS / 1000} saat`));
+        assert.equal(error.needsReauth, false, 'a slow platform is not an auth problem');
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('a network failure keeps its own reason', async () => {
+  const { fetchWithTimeout } = await import('../src/lib/connections/http');
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    throw new TypeError('fetch failed');
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => fetchWithTimeout('https://example.test', {}, 'Google Ads'),
+      /Google Ads tidak dapat dihubungi: fetch failed/,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});

@@ -1,5 +1,5 @@
 import type { IngestResult, NormalizedAdMetric } from '@/lib/ingest/adapter';
-import { PlatformError, readJson } from './http';
+import { fetchWithTimeout, PlatformError, readJson } from './http';
 
 /**
  * Meta Marketing API, read-only.
@@ -81,7 +81,7 @@ async function graph<T>(path: string, params: Record<string, string>): Promise<T
   const url = new URL(`${GRAPH}${path}`);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
 
-  const response = await fetch(url, { cache: 'no-store' });
+  const response = await fetchWithTimeout(url, { cache: 'no-store' }, 'Meta');
   const body = await readJson<T & MetaErrorBody>(response, 'Meta');
 
   if (!response.ok || body.error) throw metaError(body, response.status);
@@ -446,7 +446,7 @@ export async function fetchMetaInsights(
   do {
     const body: { data?: MetaInsightRow[]; paging?: { next?: string } } = url
       ? await (async () => {
-          const response = await fetch(url as string, { cache: 'no-store' });
+          const response = await fetchWithTimeout(url as string, { cache: 'no-store' }, 'Meta');
           const parsed = await readJson<{ data?: MetaInsightRow[]; paging?: { next?: string } } & MetaErrorBody>(
             response,
             'Meta',

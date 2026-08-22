@@ -1,5 +1,5 @@
 import type { IngestResult, NormalizedAdMetric } from '@/lib/ingest/adapter';
-import { PlatformError, readJson } from './http';
+import { fetchWithTimeout, PlatformError, readJson } from './http';
 
 /**
  * Google Ads API, read-only.
@@ -45,12 +45,12 @@ export interface GoogleToken {
 }
 
 async function tokenRequest(body: Record<string, string>): Promise<GoogleToken> {
-  const response = await fetch('https://oauth2.googleapis.com/token', {
+  const response = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(body),
     cache: 'no-store',
-  });
+  }, 'Google OAuth');
 
   const parsed = await readJson<{
     access_token?: string;
@@ -132,13 +132,13 @@ export async function listGoogleAdsCustomers(input: {
   accessToken: string;
   developerToken: string;
 }): Promise<string[]> {
-  const response = await fetch(`${ADS_API}/customers:listAccessibleCustomers`, {
+  const response = await fetchWithTimeout(`${ADS_API}/customers:listAccessibleCustomers`, {
     headers: {
       Authorization: `Bearer ${input.accessToken}`,
       'developer-token': input.developerToken,
     },
     cache: 'no-store',
-  });
+  }, 'Google Ads');
 
   const parsed = await readJson<{
     resourceNames?: string[];
@@ -277,7 +277,7 @@ export async function fetchGoogleAdsInsights(
   // Required when the account is reached through a manager account.
   if (options.loginCustomerId) headers['login-customer-id'] = options.loginCustomerId;
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${ADS_API}/customers/${options.customerId}/googleAds:searchStream`,
     {
       method: 'POST',
@@ -285,6 +285,7 @@ export async function fetchGoogleAdsInsights(
       body: JSON.stringify({ query: buildQuery(options) }),
       cache: 'no-store',
     },
+    'Google Ads',
   );
 
   const parsed = await readJson<unknown>(response, 'Google Ads');
