@@ -1,10 +1,10 @@
 'use client';
 
 import { useActionState } from 'react';
-import { Link2, PlugZap, RefreshCw, Unlink } from 'lucide-react';
+import { KeyRound, Link2, PlugZap, RefreshCw, Unlink } from 'lucide-react';
 import {
-  disconnectAction, linkConnectionAction, syncCampaignAction, unlinkConnectionAction,
-  type ConnectionResult,
+  disconnectAction, importSystemUserAction, linkConnectionAction, syncCampaignAction,
+  unlinkConnectionAction, type ConnectionResult,
 } from '@/app/connections-actions';
 import type { AdConnection, CampaignSource } from '@/lib/db/connections';
 import type { PlatformStatus } from '@/lib/connections/config';
@@ -51,6 +51,40 @@ export function ConnectButtons({
           </a>
         );
       })}
+    </div>
+  );
+}
+
+
+/**
+ * Imports a system-user token straight from the environment.
+ *
+ * Rendered only when one is configured. For a single team that owns its ad
+ * accounts this replaces the whole OAuth round trip — no login configuration,
+ * no redirect URI, no consent screen.
+ */
+export function ImportSystemUserButton({ campaignId }: { campaignId: string }) {
+  const [state, action] = useActionState<ConnectionResult | null, FormData>(
+    importSystemUserAction,
+    null,
+  );
+
+  return (
+    <div className="w-full">
+      <form action={action} className="flex items-center gap-2">
+        <input type="hidden" name="campaign_id" value={campaignId} />
+        <SubmitButton variant="secondary">
+          <KeyRound size={14} /> Guna token system user
+        </SubmitButton>
+        <span className="text-[12px] text-ink-3">
+          Token dari Business Settings, tanpa OAuth.
+        </span>
+      </form>
+      {state && (
+        <div className="mt-2">
+          <Notice tone={state.ok ? 'ok' : 'error'}>{state.message}</Notice>
+        </div>
+      )}
     </div>
   );
 }

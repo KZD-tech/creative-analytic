@@ -7,6 +7,7 @@ import {
 } from '@/lib/db/connections';
 import { syncSource } from '@/lib/connections/sync';
 import { getCampaign } from '@/lib/db/queries';
+import { importSystemUserConnection } from './api/connect/_import';
 
 export interface ConnectionResult {
   ok: boolean;
@@ -118,5 +119,33 @@ export async function disconnectAction(
     };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Gagal memutuskan.' };
+  }
+}
+
+/**
+ * Imports the ad accounts a system-user token already reaches, skipping OAuth.
+ *
+ * Only offered when META_SYSTEM_USER_TOKEN is set, which is the deployment
+ * saying "this instance belongs to one team that owns these accounts".
+ */
+export async function importSystemUserAction(
+  _prev: ConnectionResult | null,
+  formData: FormData,
+): Promise<ConnectionResult> {
+  const user = await requireUser();
+  const campaignId = String(formData.get('campaign_id') ?? '');
+  if (!campaignId) return { ok: false, message: 'Kempen tidak dinyatakan.' };
+
+  try {
+    const { imported } = await importSystemUserConnection({ userId: user.id, campaignId });
+    revalidatePath('/', 'layout');
+    return {
+      ok: true,
+      message: imported.length === 1
+        ? `${imported[0].name} disambungkan.`
+        : `${imported.length} akaun disambungkan: ${imported.map((a) => a.name).join(', ')}.`,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Import gagal.' };
   }
 }

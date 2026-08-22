@@ -1,6 +1,6 @@
 import { getBenchmarks, getCampaign, listBatches, listSnapshots } from '@/lib/db/queries';
 import { listCampaignSources, listConnections } from '@/lib/db/connections';
-import { platformStatus } from '@/lib/connections/config';
+import { platformStatus, systemUserConfig } from '@/lib/connections/config';
 import { load } from '@/lib/db/safe';
 import { SetupNotice } from '@/components/SetupNotice';
 import { UploadPanel } from '@/components/data/UploadPanel';
@@ -8,7 +8,8 @@ import { RollbackList } from '@/components/data/RollbackList';
 import { BenchmarkForm } from '@/components/data/BenchmarkForm';
 import { NewCampaignForm } from '@/components/NewCampaignForm';
 import {
-  ConnectButtons, ConnectFeedback, LastSyncLine, LinkedSources, SyncButton,
+  ConnectButtons, ConnectFeedback, ImportSystemUserButton, LastSyncLine, LinkedSources,
+  SyncButton,
 } from '@/components/data/ConnectionsPanel';
 import { Card, CardHeader, SectionTitle, Badge } from '@/components/ui/primitives';
 import { dateTime } from '@/lib/format';
@@ -75,6 +76,9 @@ export default async function DataPage({
           <div className="space-y-4 px-5 pb-4">
             <ConnectFeedback ok={connectOk} error={connectError} />
             <ConnectButtons campaignId={campaignId} statuses={statuses} />
+            {systemUserConfig().token !== '' && (
+              <ImportSystemUserButton campaignId={campaignId} />
+            )}
             <LinkedSources campaignId={campaignId} sources={sources} connections={connections} />
             {sources.length > 0 ? (
               <div className="space-y-2 border-t border-line pt-3">

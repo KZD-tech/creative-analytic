@@ -153,6 +153,44 @@ Derma dibaca daripada `actions`/`action_values` dengan memilih mengikut
 
 ---
 
+## Meta: laluan terus, tanpa OAuth
+
+OAuth wujud supaya **ramai orang** boleh menyambung akaun iklan masing-masing.
+Satu pasukan yang memiliki akaunnya sendiri tidak mendapat faedah itu, tetapi
+tetap menanggung kosnya: configuration login, redirect URI, senarai peranan app,
+dan satu system user yang dicipta secara automatik — yang kadangkala tidak
+pernah muncul langsung.
+
+Kalau itu keadaan anda, jana token terus:
+
+**Business Settings → Users → System users** → pilih system user yang **sudah
+memegang akaun iklan anda** → **Generate new token** → pilih app → tandakan
+`ads_read` → salin.
+
+Isikan dua env:
+
+```
+META_SYSTEM_USER_TOKEN=<token yang dijana>
+META_AD_ACCOUNT_ID=act_111, act_222
+```
+
+Satu butang tambahan — **Guna token system user** — akan muncul pada tab Data.
+Menekannya mengimport akaun tersebut dan menyambungkannya ke kempen.
+
+Dua perkara yang menjadikan ini kukuh:
+
+- **Token disulitkan semasa import**, sama seperti token OAuth. Env memegangnya
+  hanya sehingga import pertama.
+- **`META_AD_ACCOUNT_ID` melangkau penyenaraian akaun sepenuhnya.** Edge mana
+  yang menjawab bergantung pada jenis token, dan penolakan dari edge yang salah
+  tidak menyebut apa-apa yang berguna. Bila id akaun sudah diketahui, tiada
+  sebab untuk bertanya.
+
+Butang OAuth kekal di tempatnya. Kedua-dua laluan menulis baris `ad_connections`
+yang sama, jadi segerak, rollback dan semua yang lain tidak tahu bezanya.
+
+---
+
 ## Google Ads
 
 Google memerlukan satu benda tambahan yang Meta tidak: **developer token**.

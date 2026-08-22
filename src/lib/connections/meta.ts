@@ -263,6 +263,33 @@ async function explainNoAccounts(
   );
 }
 
+/**
+ * Reads one named ad account directly, without asking which accounts a token
+ * can reach.
+ *
+ * The listing edges are the fragile part of this integration — which one
+ * answers depends on the token type, and a refusal from the wrong one says
+ * nothing useful. When the account id is already known there is no reason to
+ * ask at all.
+ */
+export async function describeMetaAdAccount(
+  accessToken: string,
+  accountId: string,
+): Promise<MetaAdAccount> {
+  const id = accountId.startsWith('act_') ? accountId : `act_${accountId}`;
+  const row = await graph<{ id: string; name?: string; currency?: string; timezone_name?: string }>(
+    `/${id}`,
+    { access_token: accessToken, fields: 'id,name,currency,timezone_name' },
+  );
+
+  return {
+    id: row.id,
+    name: row.name ?? row.id,
+    currency: row.currency ?? null,
+    timezone: row.timezone_name ?? null,
+  };
+}
+
 // ── insights ────────────────────────────────────────────────────────────────
 
 const INSIGHT_FIELDS = [
