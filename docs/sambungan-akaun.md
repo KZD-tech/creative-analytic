@@ -80,9 +80,27 @@ kemudian sebagai *"Tiada akaun iklan pada akaun Meta ini"*.
    configuration**
 2. Beri nama (contoh: `Creative Analytic — baca`)
 3. Login variant: **Business login**
-4. Assets: **Ad accounts**
-5. Permissions: tandakan `ads_read` dan `business_management`
-6. Simpan, kemudian salin **Configuration ID**
+4. Jenis token: **System-user access token** — lihat nota di bawah
+5. Assets: **Ad accounts**
+6. Permissions: tandakan `ads_read` dan `business_management`
+7. Simpan, kemudian salin **Configuration ID**
+
+> **Jenis token tidak boleh ditukar selepas configuration disimpan.** Kalau
+> tersilap, buat configuration baharu dan tukar `META_LOGIN_CONFIG_ID`.
+
+| | System-user | User |
+|---|---|---|
+| Log masuk dengan | business portfolio | akaun Facebook peribadi |
+| Tempoh sah | tidak luput | ~60 hari |
+| Perlu | Business Manager yang memegang akaun iklan | tiada |
+
+**System-user** ialah pilihan yang betul untuk dashboard yang menyegerak
+berulang kali: tokennya tidak luput, jadi tiada sesiapa perlu menyambung semula
+setiap dua bulan. Syaratnya akaun iklan mesti berada dalam Business Manager.
+
+Pilih **User** hanya kalau akaun iklan itu peribadi dan tiada Business Manager.
+Kedua-duanya berfungsi — kod mengendalikan tempoh sah masing-masing, dan
+sambungan akan meminta disambung semula bila tokennya hampir luput.
 
 Letak id itu sebagai `META_LOGIN_CONFIG_ID`.
 

@@ -90,26 +90,41 @@ export async function exchangeMetaCode(input: {
   redirectUri: string;
   code: string;
 }): Promise<MetaToken> {
-  const short = await graph<{ access_token: string }>('/oauth/access_token', {
+  const short = await graph<{ access_token: string; expires_in?: number }>('/oauth/access_token', {
     client_id: input.appId,
     client_secret: input.appSecret,
     redirect_uri: input.redirectUri,
     code: input.code,
   });
 
-  const long = await graph<{ access_token: string; expires_in?: number }>('/oauth/access_token', {
-    grant_type: 'fb_exchange_token',
-    client_id: input.appId,
-    client_secret: input.appSecret,
-    fb_exchange_token: short.access_token,
-  });
+  // A configuration issuing **system-user** tokens returns one that never
+  // expires, and `fb_exchange_token` has nothing to extend. Meta signals this
+  // by omitting expires_in or sending 0.
+  if (!short.expires_in) return { accessToken: short.access_token, expiresAt: null };
 
-  return {
-    accessToken: long.access_token,
-    expiresAt: long.expires_in
-      ? new Date(Date.now() + long.expires_in * 1000).toISOString()
-      : null,
-  };
+  // A **user** token starts at about two hours; this trades it for the ~60 day
+  // one. If the exchange is refused, the short token still works — returning it
+  // with its real expiry is far better than failing the whole connection, and
+  // the connection simply asks to be renewed sooner.
+  try {
+    const long = await graph<{ access_token: string; expires_in?: number }>('/oauth/access_token', {
+      grant_type: 'fb_exchange_token',
+      client_id: input.appId,
+      client_secret: input.appSecret,
+      fb_exchange_token: short.access_token,
+    });
+
+    return {
+      accessToken: long.access_token,
+      expiresAt: expiryFrom(long.expires_in),
+    };
+  } catch {
+    return { accessToken: short.access_token, expiresAt: expiryFrom(short.expires_in) };
+  }
+}
+
+function expiryFrom(seconds: number | undefined): string | null {
+  return seconds ? new Date(Date.now() + seconds * 1000).toISOString() : null;
 }
 
 export interface MetaAdAccount {
