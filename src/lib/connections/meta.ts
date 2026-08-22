@@ -135,6 +135,26 @@ export interface MetaAdAccount {
 }
 
 /**
+ * Which of the scopes we need are genuinely absent.
+ *
+ * `ads_management` is a superset of `ads_read`, and a system-user login
+ * configuration is often only offered the wider one. Comparing the granted
+ * list literally would then report `ads_read` as missing on a token that can
+ * already read everything this app asks for — sending the user to fix
+ * something that is not broken.
+ */
+export function missingScopes(granted: string[]): string[] {
+  const covers: Record<string, string[]> = {
+    ads_read: ['ads_read', 'ads_management'],
+    business_management: ['business_management'],
+  };
+
+  return META_SCOPES.split(',').filter(
+    (needed) => !(covers[needed] ?? [needed]).some((scope) => granted.includes(scope)),
+  );
+}
+
+/**
  * Reads the scopes actually attached to a token. Best-effort: it exists to
  * improve an error message, so a failure here must not replace the error it
  * was called to explain.
@@ -171,7 +191,7 @@ export async function listMetaAdAccounts(accessToken: string): Promise<MetaAdAcc
     if (error instanceof PlatformError && error.message.includes('#200')) {
       const scopes = await grantedScopes(accessToken);
       if (scopes) {
-        const missing = META_SCOPES.split(',').filter((scope) => !scopes.includes(scope));
+        const missing = missingScopes(scopes);
         throw new PlatformError(
           missing.length > 0
             ? `Meta menolak: token ini tidak membawa ${missing.join(' dan ')}. ` +

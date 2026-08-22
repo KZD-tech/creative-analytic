@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
-import { exchangeMetaCode, listMetaAdAccounts } from '@/lib/connections/meta';
+import { exchangeMetaCode, listMetaAdAccounts, missingScopes } from '@/lib/connections/meta';
 
 const INPUT = {
   appId: '123',
@@ -164,4 +164,50 @@ test('errors that are not #200 are passed through untouched', async () => {
 
   await assert.rejects(() => listMetaAdAccounts('token'), /Invalid OAuth access token/);
   assert.equal(calls.length, 1, 'no permissions lookup for an unrelated failure');
+});
+
+// ── ads_management covers ads_read ──────────────────────────────────────────
+
+test('ads_management satisfies the read requirement', () => {
+  // A system-user configuration is often only offered the wider scope. Blaming
+  // ads_read there would send someone to fix a token that already works.
+  assert.deepEqual(missingScopes(['ads_management', 'business_management']), []);
+});
+
+test('ads_management alone still leaves business_management missing', () => {
+  assert.deepEqual(missingScopes(['ads_management']), ['business_management']);
+});
+
+test('the narrow scope on its own is enough for reading', () => {
+  assert.deepEqual(missingScopes(['ads_read', 'business_management']), []);
+});
+
+test('page scopes satisfy nothing', () => {
+  assert.deepEqual(missingScopes(['pages_show_list', 'pages_read_engagement', 'public_profile']), [
+    'ads_read',
+    'business_management',
+  ]);
+});
+
+test('a token carrying ads_management is not blamed for the wrong thing', async () => {
+  stubGraph([
+    { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
+    {
+      body: {
+        data: [
+          { permission: 'ads_management', status: 'granted' },
+          { permission: 'business_management', status: 'granted' },
+        ],
+      },
+    },
+  ]);
+
+  await assert.rejects(
+    () => listMetaAdAccounts('token'),
+    (error: Error) => {
+      assert.match(error.message, /Business Settings/, 'points at asset assignment, not permissions');
+      assert.ok(!/tidak membawa/.test(error.message), 'nothing is reported as missing');
+      return true;
+    },
+  );
 });
