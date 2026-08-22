@@ -13,8 +13,22 @@ import { PlatformError, readJson } from './http';
 export const META_GRAPH_VERSION = process.env.META_GRAPH_VERSION?.trim() || 'v21.0';
 const GRAPH = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 
-/** Read-only. `business_management` is what lets us list the ad accounts. */
+/**
+ * What the classic login flow asks for. `business_management` is requested
+ * because it helps the plain Facebook Login flow see business-owned ad
+ * accounts, but it is not *required* — see META_REQUIRED_SCOPES.
+ */
 export const META_SCOPES = ['ads_read', 'business_management'].join(',');
+
+/**
+ * What this app genuinely cannot work without.
+ *
+ * Both calls it makes — listing ad accounts and reading their insights — need
+ * `ads_read` and nothing more. A Login for Business configuration names its own assets, so
+ * it grants `ads_read` alone; treating `business_management` as mandatory would
+ * declare a perfectly good token broken.
+ */
+export const META_REQUIRED_SCOPES = ['ads_read'];
 
 /**
  * Apps created through Meta's use-case flow get **Facebook Login for Business**
@@ -146,10 +160,9 @@ export interface MetaAdAccount {
 export function missingScopes(granted: string[]): string[] {
   const covers: Record<string, string[]> = {
     ads_read: ['ads_read', 'ads_management'],
-    business_management: ['business_management'],
   };
 
-  return META_SCOPES.split(',').filter(
+  return META_REQUIRED_SCOPES.filter(
     (needed) => !(covers[needed] ?? [needed]).some((scope) => granted.includes(scope)),
   );
 }

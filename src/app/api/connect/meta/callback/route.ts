@@ -74,10 +74,24 @@ export async function GET(request: NextRequest) {
       origin,
     );
   } catch (error) {
-    return backToData(
-      state.campaignId,
-      { connect_error: error instanceof Error ? error.message : 'Sambungan Meta gagal.' },
-      origin,
-    );
+    const message = error instanceof Error ? error.message : 'Sambungan Meta gagal.';
+    return backToData(state.campaignId, { connect_error: `${message} ${flowHint()}` }, origin);
   }
+}
+
+/**
+ * Says which login flow actually ran.
+ *
+ * Without this, a token that comes back carrying the wrong permissions is
+ * ambiguous: the login configuration might be wrong, or it might be correct and
+ * simply never reached the app — an env var missing, or set but not redeployed.
+ * Those have opposite fixes, and the token alone cannot tell them apart.
+ */
+function flowHint(): string {
+  const configId = metaConfig().loginConfigId;
+  return configId
+    ? `(Aliran: Login for Business, config ${configId}.)`
+    : '(Aliran: scope klasik — META_LOGIN_CONFIG_ID tidak sampai ke aplikasi ini. ' +
+      'Kalau app anda menggunakan Facebook Login for Business, isinya diabaikan dan ' +
+      'token tidak akan membawa permission yang diminta.)';
 }

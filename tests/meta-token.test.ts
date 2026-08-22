@@ -95,21 +95,21 @@ test('a #200 is re-reported as the exact permissions the token is missing', asyn
   await assert.rejects(
     () => listMetaAdAccounts('token'),
     (error: Error) => {
-      assert.match(error.message, /ads_read dan business_management/);
+      assert.match(error.message, /tidak membawa ads_read/);
       assert.match(error.message, /Yang ada: public_profile/);
       return true;
     },
   );
 });
 
-test('a partially granted token names only what is actually absent', async () => {
+test('a declined permission is not counted as granted', async () => {
   stubGraph([
     { status: 400, body: { error: { message: '(#200) Missing Permissions', code: 200 } } },
     {
       body: {
         data: [
-          { permission: 'ads_read', status: 'granted' },
-          { permission: 'business_management', status: 'declined' },
+          { permission: 'ads_read', status: 'declined' },
+          { permission: 'public_profile', status: 'granted' },
         ],
       },
     },
@@ -118,8 +118,7 @@ test('a partially granted token names only what is actually absent', async () =>
   await assert.rejects(
     () => listMetaAdAccounts('token'),
     (error: Error) => {
-      assert.match(error.message, /tidak membawa business_management/);
-      assert.ok(!/tidak membawa ads_read/.test(error.message), 'ads_read is granted, so it is not blamed');
+      assert.match(error.message, /tidak membawa ads_read/);
       return true;
     },
   );
@@ -174,8 +173,11 @@ test('ads_management satisfies the read requirement', () => {
   assert.deepEqual(missingScopes(['ads_management', 'business_management']), []);
 });
 
-test('ads_management alone still leaves business_management missing', () => {
-  assert.deepEqual(missingScopes(['ads_management']), ['business_management']);
+test('ads_management alone is enough — business_management is not required', () => {
+  // Neither call this app makes needs it, and a Login for Business
+  // configuration names its assets instead of granting it.
+  assert.deepEqual(missingScopes(['ads_management']), []);
+  assert.deepEqual(missingScopes(['ads_read']), []);
 });
 
 test('the narrow scope on its own is enough for reading', () => {
@@ -185,7 +187,6 @@ test('the narrow scope on its own is enough for reading', () => {
 test('page scopes satisfy nothing', () => {
   assert.deepEqual(missingScopes(['pages_show_list', 'pages_read_engagement', 'public_profile']), [
     'ads_read',
-    'business_management',
   ]);
 });
 
