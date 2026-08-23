@@ -303,9 +303,32 @@ diliputi, ditambah **tiga hari tindanan** — Meta dan Google masih melaraskan
 angka beberapa hari selepas fakta, jadi menganggap semalam sudah muktamad akan
 membekukan nombor yang masih bergerak.
 
+### Berapa jauh ke belakang
+
+Lalai **180 hari**, boleh ditukar dengan `META_LOOKBACK_DAYS`.
+
+Ia sasaran, bukan beban satu permintaan. Tetingkap ditarik berketul mingguan,
+terbaharu dahulu, dan setiap larian berhenti pada belanjawan masanya dengan
+julat yang diliputi disimpan — jadi 180 hari mengambil beberapa larian, bukan
+satu larian panjang yang tamat masa.
+
+Tarikan pertama berbaloi dipercepatkan dengan menekan **Segerak** beberapa kali
+berturut-turut; selepas sejarah masuk, hanya tindanan harian yang bergerak.
+
+Meta menyimpan insights selama **37 bulan**, jadi siling di sini milik kita,
+bukan Meta. Naikkan `META_LOOKBACK_DAYS` kalau anda perlukan lebih jauh.
+
 ### Berjadual
 
-`vercel.json` mendaftarkan cron harian pada 2 pagi UTC. Ia memerlukan satu env:
+`vercel.json` mendaftarkan cron harian pada **18:00 UTC — iaitu 2 pagi waktu
+Malaysia**, supaya hari semalam sudah lengkap sebelum ia berjalan.
+
+> Cron Vercel dibaca dalam **UTC**. Menulis jam tempatan di situ akan
+> menjalankannya pada 8 pagi waktu Malaysia, dan tiada apa yang kelihatan
+> salah sehingga seseorang perasan sempadan hari tersasar. Ada ujian yang
+> mengunci ini.
+
+Ia memerlukan satu env:
 
 ```
 CRON_SECRET=<openssl rand -base64 32>
@@ -315,8 +338,11 @@ Vercel menghantarnya sebagai `Authorization: Bearer …`. Tanpa env itu, endpoin
 menolak semua permintaan — ia berjalan sebagai service role di luar mana-mana
 sesi pengguna, jadi ia gagal tertutup.
 
-> Vercel Hobby hanya membenarkan satu cron sehari. Pada Pro, tukar `schedule`
-> dalam `vercel.json` kepada sesuatu seperti `0 */6 * * *`.
+> Vercel Hobby hanya membenarkan **satu cron sehari** — cukup untuk keperluan
+> ini. Masa larian pada Hobby juga tidak dijamin tepat dan boleh terpesong
+> sehingga sejam; itu tidak menjadi masalah di sini kerana tarikan sentiasa
+> menyertakan tindanan tiga hari. Pada Pro, `0 */6 * * *` memberi empat kali
+> sehari.
 
 ---
 

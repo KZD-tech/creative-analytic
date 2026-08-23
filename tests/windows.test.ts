@@ -178,3 +178,50 @@ test('a creative listing stops paging once its deadline passes', async () => {
     mock.restoreAll();
   }
 });
+
+// ── the scheduled pull ──────────────────────────────────────────────────────
+
+test('the cron fires just after midnight in Malaysia, not in UTC', async () => {
+  // Vercel reads cron schedules as UTC. Writing the local hour there would run
+  // the job at 8am Malaysian time — and nothing would look wrong until someone
+  // noticed the day boundary was off.
+  const { readFileSync } = await import('node:fs');
+  const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
+  const [job] = config.crons;
+
+  assert.equal(job.path, '/api/sync/cron');
+
+  const [minute, hour] = job.schedule.split(' ');
+  const utc = new Date(Date.UTC(2026, 7, 23, Number(hour), Number(minute)));
+  const local = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kuala_Lumpur',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(utc);
+
+  const [localHour] = local.split(':').map(Number);
+  assert.ok(
+    localHour >= 0 && localHour <= 4,
+    `runs at ${local} Malaysian time — should be shortly after midnight so the previous day is complete`,
+  );
+});
+
+test('the lookback reaches back far enough to be worth backfilling', async () => {
+  const { DEFAULT_LOOKBACK_DAYS } = await import('@/lib/connections/sync');
+  assert.ok(DEFAULT_LOOKBACK_DAYS >= 90, `got ${DEFAULT_LOOKBACK_DAYS} days`);
+});
+
+test('a long lookback is still cut into small chunks', () => {
+  // The window is a target, not a single request: 180 days must not become one
+  // enormous call that times out.
+  const target = { since: '2026-02-24', until: '2026-08-22' };
+  const windows = pendingWindows(target, { from: null, through: null });
+
+  assert.ok(windows.length > 20, `${windows.length} chunks for 180 days`);
+  for (const w of windows) {
+    const days = (Date.parse(w.until) - Date.parse(w.since)) / 86_400_000 + 1;
+    assert.ok(days <= CHUNK_DAYS, `${w.since}..${w.until} is ${days} days`);
+  }
+  assert.equal(windows[0].until, target.until, 'the newest days still come first');
+});

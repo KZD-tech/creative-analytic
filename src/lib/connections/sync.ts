@@ -39,8 +39,17 @@ const BUDGET_MS = 45_000;
  */
 const CREATIVE_RESERVE_MS = 16_000;
 
-/** Meta and Google both settle their numbers for a few days after the fact. */
-export const DEFAULT_LOOKBACK_DAYS = 30;
+/**
+ * How far back a sync tries to reach.
+ *
+ * This is a target, not a per-request workload: the window is pulled in weekly
+ * chunks, newest first, and each run stops on its time budget with the covered
+ * range recorded. A long lookback therefore costs several runs, not one long
+ * one — and once the history is in, the daily overlap is all that moves.
+ *
+ * Meta keeps insights for 37 months, so the ceiling here is ours, not theirs.
+ */
+export const DEFAULT_LOOKBACK_DAYS = Number(process.env.META_LOOKBACK_DAYS) || 180;
 
 function windowFor(days: number): { since: string; until: string } {
   const until = new Date();
