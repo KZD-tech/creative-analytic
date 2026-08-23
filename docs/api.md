@@ -173,6 +173,61 @@ memadam kerja ejen bersamanya, secara senyap.
 
 ---
 
+## `DELETE /api/v1/conversions`
+
+Membuang derma yang ejen hantar, supaya larian yang tersilap boleh dibetulkan
+dan bukannya ditanggung.
+
+**Dua bentuk.** Guna resit bila anda tahu baris mana; guna julat bila
+keseluruhan larian perlu diundur.
+
+```bash
+# Mengikut resit — tepat
+curl -X DELETE -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"campaign_id":"im-1","external_ids":["ONP-1001","ONP-1002"]}' \
+  https://ihsanku.kaizendigital.my/api/v1/conversions
+
+# Mengikut julat — memerlukan confirm
+curl -X DELETE -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"campaign_id":"im-1","from":"2026-08-01","to":"2026-08-31","confirm":true}' \
+  https://ihsanku.kaizendigital.my/api/v1/conversions
+```
+
+```json
+{ "ok": true, "campaign_id": "im-1", "deleted": 2, "matched_by": "external_ids" }
+```
+
+| Medan | Nota |
+|---|---|
+| `external_ids` | maksimum 1,000. Tidak boleh digabung dengan julat |
+| `from` / `to` | kedua-duanya **inklusif**. Tidak boleh digabung dengan resit |
+| `confirm` | wajib `true` untuk julat sahaja |
+
+### Tiga had yang menjadikannya selamat diberi kepada mesin
+
+**Hanya baris yang ditulis melalui API ini disentuh.** Muat naik CSV ialah kerja
+seseorang secara sengaja; ejen tidak boleh memadamnya dengan tersilap julat
+tarikh. Ini disahkan: padam julat sebulan penuh meninggalkan baris CSV utuh.
+
+**Padam mengikut julat memerlukan `confirm: true`.** Menamakan resit sudah pun
+satu pernyataan niat. Menamakan sebulan bukan — dan bulan yang tersilap ialah
+kesilapan yang berbaloi dibuat mahal.
+
+**Bilangan dipulangkan.** Ejen boleh menyemak kerosakan sepadan dengan apa yang
+ia berniat undur, dan berhenti kalau tidak.
+
+### Betulkan larian yang tersilap
+
+```
+1. DELETE mengikut julat larian itu, dengan confirm
+2. POST semula data yang betul
+```
+
+Tidak perlu berhati-hati tentang pertindihan — `external_id` menjadikan
+penghantaran semula idempoten.
+
+---
+
 ## Ralat
 
 Setiap jawapan membawa `ok`. Bercabang pada medan itu, bukan pada kod status.
@@ -185,6 +240,7 @@ Setiap jawapan membawa `ok`. Bercabang pada medan itu, bukan pada kod status.
 |---|---|
 | `401` | kunci tiada, salah, atau sudah dibatalkan |
 | `403` | kunci tiada kebenaran itu, atau ditujukan ke kempen lain |
+| `422` | padam: bentuk salah, julat tanpa `confirm`, atau resit **dan** julat diberi serentak |
 | `404` | kempen tidak wujud, **atau** bukan milik akaun kunci itu |
 | `422` | bentuk data salah — `issues[]` menamakan medan mana |
 | `500` | pangkalan data menolak tulisan itu |
