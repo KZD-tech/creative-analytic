@@ -19,6 +19,7 @@ import {
   getCampaign,
   saveBenchmarks,
   setCreativeTags,
+  updateCampaign,
   upsertTag,
 } from '@/lib/db/queries';
 import type { TagDimension } from '@/types/db';
@@ -53,6 +54,28 @@ export async function createCampaignAction(_prev: ActionResult | null, formData:
     const campaign = await createCampaign({ id, name, ownerId: user.id, currency, timezone });
     revalidatePath('/', 'layout');
     return { ok: true, message: `Kempen "${campaign.name}" berjaya dibuat.` };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function updateCampaignAction(
+  _prev: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const id = String(formData.get('id') ?? '').trim();
+  const name = String(formData.get('name') ?? '').trim();
+  const currency = String(formData.get('currency') ?? '').trim() || 'MYR';
+  const timezone = String(formData.get('timezone') ?? '').trim() || 'Asia/Kuala_Lumpur';
+
+  if (!id) return { ok: false, message: 'Ruang kerja tidak dinyatakan.' };
+  if (!name) return { ok: false, message: 'Nama wajib diisi.' };
+
+  try {
+    await requireUser();
+    const campaign = await updateCampaign({ id, name, currency, timezone });
+    revalidatePath('/', 'layout');
+    return { ok: true, message: `Disimpan sebagai "${campaign.name}".` };
   } catch (error) {
     return fail(error);
   }

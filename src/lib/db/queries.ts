@@ -82,6 +82,39 @@ export async function createCampaign(input: {
   return data as Campaign;
 }
 
+/**
+ * Renames a workspace and adjusts its currency or timezone.
+ *
+ * The id is deliberately not editable. It is in every URL, every API call and
+ * every foreign key in the database; changing it would break bookmarks and
+ * orphan data, and there is no benefit that pays for that.
+ */
+export async function updateCampaign(input: {
+  id: string;
+  name: string;
+  currency: string;
+  timezone: string;
+}): Promise<Campaign> {
+  const supabase = await db();
+  const { data, error } = await supabase
+    .from('campaigns')
+    .update({
+      name: input.name,
+      currency: input.currency,
+      timezone: input.timezone,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', input.id)
+    .select()
+    .single();
+
+  // Row-level security answers "not yours" the same way as "does not exist",
+  // so a missing row here means one of the two and neither is worth telling
+  // apart.
+  if (error || !data) throw new Error(error?.message ?? 'Ruang kerja tidak dijumpai.');
+  return data as Campaign;
+}
+
 // ── benchmarks ──────────────────────────────────────────────────────────────
 
 export async function getBenchmarks(campaignId: string): Promise<Benchmarks> {

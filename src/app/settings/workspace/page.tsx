@@ -5,7 +5,8 @@ import { requireUser } from '@/lib/auth/session';
 import { load } from '@/lib/db/safe';
 import { SetupNotice } from '@/components/SetupNotice';
 import { NewCampaignForm } from '@/components/NewCampaignForm';
-import { Card, SectionTitle, Badge } from '@/components/ui/primitives';
+import { WorkspaceList, type WorkspaceRow } from './WorkspacePanel';
+import { Card, SectionTitle } from '@/components/ui/primitives';
 import { Notice } from '@/components/ui/Notice';
 
 export const dynamic = 'force-dynamic';
@@ -19,15 +20,7 @@ export default async function WorkspacePage() {
       .from('campaigns')
       .select('id, name, currency, timezone, status')
       .order('name');
-    return {
-      campaigns: (data ?? []) as {
-        id: string;
-        name: string;
-        currency: string;
-        timezone: string;
-        status: string;
-      }[],
-    };
+    return { campaigns: (data ?? []) as WorkspaceRow[] };
   });
 
   if (!loaded.ok) return <SetupNotice error={loaded.error} />;
@@ -60,29 +53,7 @@ export default async function WorkspacePage() {
 
       <section className="mt-6">
         <SectionTitle>Ruang kerja sedia ada</SectionTitle>
-        <div className="space-y-2">
-          {campaigns.map((campaign) => (
-            <div
-              key={campaign.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line px-3.5 py-3"
-            >
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    href={`/c/${encodeURIComponent(campaign.id)}`}
-                    className="text-[13px] font-medium text-ink hover:underline"
-                  >
-                    {campaign.name}
-                  </Link>
-                  {campaign.status !== 'active' && <Badge>Arkib</Badge>}
-                </div>
-                <p className="mt-0.5 text-[12px] text-ink-3">
-                  <code>{campaign.id}</code> · {campaign.currency} · {campaign.timezone}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <WorkspaceList workspaces={campaigns} />
       </section>
 
       <section className="mt-6">
