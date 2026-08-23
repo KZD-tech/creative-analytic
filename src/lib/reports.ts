@@ -34,7 +34,7 @@ export const REPORTS: ReportDef[] = [
     blurb: 'Aset kreatif terbaik',
     icon: '🎬',
     defaultSort: 'roas',
-    defaultMetrics: ['roas', 'spend', 'cpa', 'conversions'],
+    defaultMetrics: ['roas', 'spend', 'revenue', 'conversions', 'cpa'],
     emptyHint: 'Muat naik eksport Ads Manager di tab Data untuk mengisi laporan ini.',
     build: ({ rows, benchmarks }) => perCreative(rows, benchmarks),
   },
@@ -44,7 +44,7 @@ export const REPORTS: ReportDef[] = [
     blurb: 'Halaman dengan konversi tertinggi',
     icon: '🖥️',
     defaultSort: 'cvr',
-    defaultMetrics: ['cvr', 'lpv', 'conversions', 'roas'],
+    defaultMetrics: ['cvr', 'lpv', 'conversions', 'revenue', 'roas'],
     emptyHint:
       'Tiada URL destinasi dalam data. Tambah lajur "Link" pada eksport Ads Manager, kemudian muat naik semula.',
     build: ({ rows, benchmarks }) =>
@@ -61,7 +61,7 @@ export const REPORTS: ReportDef[] = [
     blurb: 'Teks utama terbaik',
     icon: '📝',
     defaultSort: 'roas',
-    defaultMetrics: ['roas', 'ctr', 'conversions', 'spend'],
+    defaultMetrics: ['roas', 'ctr', 'conversions', 'revenue', 'spend'],
     emptyHint:
       'Tiada teks iklan dalam data. Tambah lajur "Body" pada eksport Ads Manager, kemudian muat naik semula.',
     build: ({ rows, benchmarks }) =>
@@ -77,7 +77,7 @@ export const REPORTS: ReportDef[] = [
     blurb: 'Tajuk terbaik',
     icon: '🎯',
     defaultSort: 'ctr',
-    defaultMetrics: ['ctr', 'roas', 'conversions', 'spend'],
+    defaultMetrics: ['ctr', 'roas', 'conversions', 'revenue', 'spend'],
     emptyHint:
       'Tiada tajuk iklan dalam data. Tambah lajur "Title" pada eksport Ads Manager, kemudian muat naik semula.',
     build: ({ rows, benchmarks }) =>
@@ -93,7 +93,7 @@ export const REPORTS: ReportDef[] = [
     blurb: 'Iklan video terbaik',
     icon: '🎥',
     defaultSort: 'roas',
-    defaultMetrics: ['roas', 'hookRate', 'holdRate', 'conversions'],
+    defaultMetrics: ['roas', 'hookRate', 'holdRate', 'conversions', 'revenue'],
     emptyHint:
       'Tiada kreatif video dikesan. Muat naik CSV Video Links supaya setiap iklan tahu medianya.',
     build: ({ rows, benchmarks }) =>
@@ -108,7 +108,7 @@ export const REPORTS: ReportDef[] = [
     blurb: 'Iklan imej terbaik',
     icon: '🖼️',
     defaultSort: 'roas',
-    defaultMetrics: ['roas', 'ctr', 'cpa', 'conversions'],
+    defaultMetrics: ['roas', 'ctr', 'cpa', 'conversions', 'revenue'],
     emptyHint: 'Tiada kreatif imej dikesan dalam kempen ini.',
     build: ({ rows, benchmarks }) =>
       perCreative(rows.filter((row) => row.media_kind === 'image'), benchmarks),

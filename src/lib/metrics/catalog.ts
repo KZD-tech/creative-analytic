@@ -106,7 +106,14 @@ export const METRICS: Record<MetricId, MetricDef> = {
 
 export const METRIC_IDS = Object.keys(METRICS) as MetricId[];
 
-export const DEFAULT_METRICS: MetricId[] = ['roas', 'spend', 'cpa', 'conversions'];
+/**
+ * What a donation campaign is actually asking.
+ *
+ * `revenue` is here because the count of donations does not answer "how much
+ * came in" — sixty RM10 gifts and sixty RM200 gifts read identically without
+ * it, and the whole point of the dashboard is deciding where to put budget.
+ */
+export const DEFAULT_METRICS: MetricId[] = ['roas', 'spend', 'revenue', 'conversions', 'cpa'];
 export const MAX_METRICS = 8;
 
 /**
