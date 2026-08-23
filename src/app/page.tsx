@@ -24,8 +24,8 @@ export default async function HomePage() {
     <div className="mx-auto max-w-xl px-6 py-16">
       <h1 className="text-lg font-semibold">Creative Analytic</h1>
       <p className="mt-1 text-[13px] text-ink-2">
-        Selamat datang, {user.fullName || user.email}. Belum ada kempen — buat satu untuk mula
-        memuat naik data Meta Ads dan derma.
+        Selamat datang, {user.fullName || user.email}. Belum ada ruang kerja — buat satu untuk
+        mula menarik data Meta Ads dan derma. Ini tidak mencipta apa-apa dalam Ads Manager.
       </p>
       <Card className="mt-6 px-5 py-5">
         <NewCampaignForm />

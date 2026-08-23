@@ -25,7 +25,7 @@ data lama.
 | **Laporan → butiran** | Video, diagnosis kebocoran + cadangan tindakan, 15 metrik, lengkung keletihan (frekuensi vs CTR), editor tag |
 | **Insight** | Peringkat funnel yang paling banyak makan bajet, senarai paling rugi, breakdown prestasi mengikut tag (hook/format/angle/offer) |
 | **Banding** | 2–4 kreatif sisi-ke-sisi, 17 metrik, nilai terbaik setiap baris ditanda |
-| **Data** | Muat naik CSV, log muat naik, rollback snapshot, tetapan benchmark, kempen baharu |
+| **Data** | Sambungan akaun iklan, muat naik CSV, log muat naik, rollback snapshot, tetapan benchmark |
 
 ### Laporan templat
 
@@ -298,7 +298,7 @@ hanya untuk sistem akaun, tidak pernah untuk data kempen.
 npm install
 npm run dev        # http://localhost:3000
 npm run build      # binaan produksi
-npm test           # 135 ujian unit (parser, metrik, proxy, auth, penyulitan, adapter platform)
+npm test           # 137 ujian unit (parser, metrik, proxy, auth, penyulitan, adapter platform)
 npm run lint
 ```
 

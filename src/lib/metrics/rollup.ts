@@ -108,7 +108,7 @@ export function perCreative(rows: PerformanceRow[], benchmarks: Benchmarks): Rep
   }));
 }
 
-export type GroupId = 'none' | 'adset' | 'media' | 'status' | `tag:${string}`;
+export type GroupId = 'none' | 'campaign' | 'adset' | 'media' | 'status' | `tag:${string}`;
 
 export interface GroupedRows {
   key: string;
@@ -147,7 +147,13 @@ export function groupRows(
   };
 
   for (const row of rows) {
-    if (group === 'adset') {
+    if (group === 'campaign') {
+      // The Meta campaign the ad ran under. One ad account usually holds
+      // several — donation, awareness, retargeting — and mixing them makes
+      // every average meaningless: a retargeting ad and a cold-audience ad are
+      // not competing at the same thing.
+      push(row.platform_campaign ?? '—', row.platform_campaign ?? 'Tiada kempen', row);
+    } else if (group === 'adset') {
       push(row.adset_name ?? '—', row.adset_name ?? 'Tiada ad set', row);
     } else if (group === 'media') {
       push(row.media_kind, MEDIA_LABELS[row.media_kind] ?? row.media_kind, row);

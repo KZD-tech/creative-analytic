@@ -23,7 +23,7 @@ export function NewCampaignForm({ compact = false }: { compact?: boolean }) {
 
   return (
     <form action={action} className="space-y-3">
-      <Field label="Nama kempen">
+      <Field label="Nama ruang kerja">
         <Input
           name="name"
           value={name}
@@ -36,7 +36,7 @@ export function NewCampaignForm({ compact = false }: { compact?: boolean }) {
         />
       </Field>
 
-      <Field label="ID kempen" hint="Huruf kecil, nombor dan tanda - sahaja. Tidak boleh ditukar.">
+      <Field label="ID" hint="Huruf kecil, nombor dan tanda - sahaja. Muncul dalam URL, dan tidak boleh ditukar.">
         <Input
           name="id"
           value={id}
@@ -66,7 +66,7 @@ export function NewCampaignForm({ compact = false }: { compact?: boolean }) {
       ) : null}
 
       <SubmitButton variant="primary" pendingLabel="Membuat…">
-        Buat kempen
+        Buat ruang kerja
       </SubmitButton>
     </form>
   );

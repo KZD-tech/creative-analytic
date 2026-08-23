@@ -3,6 +3,7 @@ import test from 'node:test';
 import { deriveCreative, ratio } from '@/lib/metrics/derive';
 import { withDefaults, grade } from '@/lib/metrics/benchmarks';
 import { diagnose, leakSummary } from '@/lib/metrics/diagnose';
+import { groupRows, perCreative } from '@/lib/metrics/rollup';
 import { breakdownByDimension } from '@/lib/metrics/breakdown';
 import { highlightRules, isHighlighted, METRICS } from '@/lib/metrics/catalog';
 import type { PerformanceRow, Tag } from '@/types/db';
@@ -203,4 +204,50 @@ test('spend and impressions are never highlighted', () => {
   const rules = highlightRules(rows, ['spend', 'impressions'], B);
   assert.equal(rules.spend.kind, 'none');
   assert.equal(rules.impressions.kind, 'none');
+});
+
+// ── grouping by the Meta campaign ───────────────────────────────────────────
+// One ad account usually holds several campaigns — donation, awareness,
+// retargeting — and folding them together makes every average meaningless.
+
+test('rows are sectioned by the Meta campaign they ran under', () => {
+  const rows = perCreative(
+    [
+      row({ creative_id: 'a', ad_name: 'A', platform_campaign: 'Derma — Sejuk', spend: 300 }),
+      row({ creative_id: 'b', ad_name: 'B', platform_campaign: 'Retarget', spend: 100 }),
+      row({ creative_id: 'c', ad_name: 'C', platform_campaign: 'Derma — Sejuk', spend: 200 }),
+    ],
+    B,
+  );
+
+  const groups = groupRows(rows, 'campaign', {});
+
+  assert.deepEqual(
+    groups.map((g) => g.label),
+    ['Derma — Sejuk', 'Retarget'],
+    'ordered by spend, so the campaign eating the budget comes first',
+  );
+  assert.equal(groups[0].rows.length, 2);
+  assert.equal(groups[1].rows.length, 1);
+});
+
+test('an ad with no campaign name is bucketed last, not hidden', () => {
+  // A missing name is a gap in the data, not a finding — but dropping the row
+  // would quietly remove its spend from the page.
+  const rows = perCreative(
+    [
+      row({ creative_id: 'a', ad_name: 'A', platform_campaign: null, spend: 900 }),
+      row({ creative_id: 'b', ad_name: 'B', platform_campaign: 'Derma', spend: 10 }),
+    ],
+    B,
+  );
+
+  const groups = groupRows(rows, 'campaign', {});
+
+  assert.equal(groups.at(-1)!.label, 'Tiada kempen', 'last despite having the most spend');
+  assert.equal(
+    groups.reduce((total, g) => total + g.rows.length, 0),
+    2,
+    'every row still appears somewhere',
+  );
 });

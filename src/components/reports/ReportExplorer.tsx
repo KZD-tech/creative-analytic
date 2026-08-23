@@ -139,6 +139,7 @@ export function ReportExplorer({
             className="w-auto font-medium"
           >
             <option value="none">Tiada kumpulan</option>
+            <option value="campaign">Ikut kempen (Meta)</option>
             <option value="adset">Ikut ad set</option>
             <option value="media">Ikut jenis media</option>
             <option value="status">Ikut status</option>

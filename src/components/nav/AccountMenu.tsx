@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { KeyRound, LogOut, Users } from 'lucide-react';
+import { FolderCog, KeyRound, LogOut, Users } from 'lucide-react';
 import { signOutAction } from '@/app/login/actions';
 import type { SessionUser } from '@/lib/auth/session';
 
@@ -25,6 +25,13 @@ export function AccountMenu({ user }: { user: SessionUser }) {
           <Users size={13} /> Pasukan
         </Link>
       ) : null}
+
+      <Link
+        href="/settings/workspace"
+        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink"
+      >
+        <FolderCog size={13} /> Ruang kerja
+      </Link>
 
       <Link
         href="/settings/api"

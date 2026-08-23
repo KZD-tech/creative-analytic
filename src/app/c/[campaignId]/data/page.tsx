@@ -6,7 +6,6 @@ import { SetupNotice } from '@/components/SetupNotice';
 import { UploadPanel } from '@/components/data/UploadPanel';
 import { RollbackList } from '@/components/data/RollbackList';
 import { BenchmarkForm } from '@/components/data/BenchmarkForm';
-import { NewCampaignForm } from '@/components/NewCampaignForm';
 import {
   ConnectButtons, ConnectFeedback, ImportSystemUserButton, LastSyncLine, LinkedSources,
   SyncButton,
@@ -175,12 +174,6 @@ export default async function DataPage({
         </Card>
       </section>
 
-      <section>
-        <SectionTitle>Kempen baharu</SectionTitle>
-        <Card className="max-w-md px-5 py-4">
-          <NewCampaignForm />
-        </Card>
-      </section>
     </div>
   );
 }
