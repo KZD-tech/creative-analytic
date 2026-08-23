@@ -720,6 +720,7 @@ export async function applyCreativeAssets(
     mediaUrl: string | null;
     mediaKind: 'video' | 'image' | 'none';
     thumbnailUrl: string | null;
+    previewUrl: string | null;
     headline: string | null;
     bodyCopy: string | null;
     landingUrl: string | null;
@@ -741,6 +742,7 @@ export async function applyCreativeAssets(
         if (asset.thumbnailUrl) patch.thumbnail_url = asset.thumbnailUrl;
         if (asset.mediaUrl) patch.media_url = asset.mediaUrl;
         if (asset.mediaKind !== 'none') patch.media_kind = asset.mediaKind;
+        if (asset.previewUrl) patch.preview_url = asset.previewUrl;
         if (asset.headline) patch.headline = asset.headline;
         if (asset.bodyCopy) patch.body_copy = asset.bodyCopy;
         if (asset.landingUrl) {

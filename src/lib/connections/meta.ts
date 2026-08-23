@@ -305,6 +305,8 @@ export interface MetaCreativeAsset {
   mediaKind: 'video' | 'image' | 'none';
   /** A still, always. It outlives a video URL and keeps the tile from going black. */
   thumbnailUrl: string | null;
+  /** Meta-hosted iframe of the whole ad, as a viewer would see it. */
+  previewUrl: string | null;
   headline: string | null;
   bodyCopy: string | null;
   landingUrl: string | null;
@@ -313,6 +315,7 @@ export interface MetaCreativeAsset {
 interface MetaAdRow {
   id: string;
   name?: string;
+  previews?: { data?: { body?: string }[] };
   creative?: {
     thumbnail_url?: string;
     image_url?: string;
@@ -339,8 +342,46 @@ interface MetaAdRow {
   };
 }
 
-const CREATIVE_FIELDS =
-  'id,name,creative{thumbnail_url,image_url,video_id,title,body,object_story_spec,asset_feed_spec}';
+/**
+ * The preview is requested as a field expansion rather than a second call, so
+ * it costs no extra round trip. MOBILE_FEED_STANDARD because that is where
+ * almost all of this spend actually lands.
+ */
+const PREVIEW_FORMAT = process.env.META_PREVIEW_FORMAT?.trim() || 'MOBILE_FEED_STANDARD';
+
+const CREATIVE_FIELDS = [
+  'id',
+  'name',
+  `previews.ad_format(${PREVIEW_FORMAT}){body}`,
+  'creative{thumbnail_url,image_url,video_id,title,body,object_story_spec,asset_feed_spec}',
+].join(',');
+
+/**
+ * Meta returns the preview as a fragment of HTML containing an iframe, not as a
+ * URL. The src is what can be embedded; the surrounding markup is Meta's own
+ * sizing, which would fight the layout here.
+ *
+ * Only Meta's own hosts are accepted. The body is HTML from an external
+ * service, and putting an arbitrary src into an iframe would let whatever that
+ * service returned render inside this page.
+ */
+export function previewSrc(body: string | undefined): string | null {
+  if (!body) return null;
+
+  const match = /<iframe[^>]*\ssrc=["']([^"']+)["']/i.exec(body);
+  if (!match) return null;
+
+  const src = match[1].replace(/&amp;/g, '&');
+  const url = src.startsWith('//') ? `https:${src}` : src;
+
+  try {
+    const { protocol, hostname } = new URL(url);
+    const trusted = hostname === 'facebook.com' || hostname.endsWith('.facebook.com');
+    return protocol === 'https:' && trusted ? url : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Meta scatters the same three pieces of text across three shapes depending on
@@ -370,6 +411,7 @@ function readCreative(row: MetaAdRow): MetaCreativeAsset & { videoId: string | n
     mediaUrl: videoId ? null : fullImage,
     mediaKind: videoId ? 'video' : fullImage ? 'image' : 'none',
     thumbnailUrl: still ?? null,
+    previewUrl: previewSrc(row.previews?.data?.[0]?.body),
     headline: c.title ?? link?.name ?? video?.title ?? feed?.titles?.[0]?.text ?? null,
     bodyCopy: c.body ?? link?.message ?? video?.message ?? feed?.bodies?.[0]?.text ?? null,
     landingUrl:

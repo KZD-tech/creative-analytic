@@ -52,6 +52,7 @@ export function ReportCard({
           url={row.media_url}
           kind={row.media_kind}
           thumbnail={row.thumbnail_url}
+          preview={row.preview_url}
           title={row.title}
         />
 

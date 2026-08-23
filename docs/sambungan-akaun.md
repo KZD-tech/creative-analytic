@@ -138,6 +138,7 @@ abaikan kedua-duanya.
 | `META_APP_ID` | App settings → Basic → App ID |
 | `META_APP_SECRET` | tempat sama → App Secret (klik **Show**) |
 | `META_LOGIN_CONFIG_ID` | Facebook Login for Business → Configurations (langkah 2) |
+| `META_PREVIEW_FORMAT` | pilihan; lalai `MOBILE_FEED_STANDARD` |
 | `META_GRAPH_VERSION` | pilihan; lalai `v21.0` |
 
 ### Apa yang ditarik
@@ -165,6 +166,22 @@ kebanyakan akaun sebenar kosong.
 Ia ditarik **sekali setiap segerak**, bukan sekali setiap ketulan: gambar iklan
 tidak berubah dari hari ke hari, dan nombor yang berbaloi menghabiskan
 belanjawan masa.
+
+**Pratonton iklan Meta** juga ditarik, sebagai pengembangan medan pada
+permintaan yang sama supaya ia tidak menambah panggilan. Ini berbeza daripada
+gambar: gambar menunjukkan rupa kreatif, pratonton menunjukkan rupa **iklan** —
+nama Halaman, teks utama, butang CTA, bingkai penempatan itu sendiri.
+
+Ia dimuat **hanya bila diklik**. Grid boleh memegang lima puluh kad, dan lima
+puluh iframe akan memperlahankan halaman yang paling kerap dibuka. Pada halaman
+butiran satu kreatif, ia dipaparkan terus.
+
+URL pratonton ditandatangani dan luput, jadi ia diperbaharui setiap segerak.
+Gambar tersimpan kekal sebagai sandaran — itulah sebabnya kedua-duanya disimpan
+dalam lajur berasingan.
+
+Format lalai ialah `MOBILE_FEED_STANDARD`, kerana di situlah hampir semua
+belanja ini mendarat. Tukar dengan `META_PREVIEW_FORMAT` kalau perlu.
 
 ### Hasil dan derma datang dari Onpay, bukan Meta
 

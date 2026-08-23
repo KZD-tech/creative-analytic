@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
-import { fetchMetaCreatives } from '@/lib/connections/meta';
+import { fetchMetaCreatives, previewSrc } from '@/lib/connections/meta';
 
 function stubAds(pages: unknown[]) {
   let index = 0;
@@ -343,4 +343,66 @@ test('an ad with no asset at all is marked as having none', async () => {
   const [asset] = await fetchFor([{ id: '1', name: 'Bare' }]);
   assert.equal(asset.mediaKind, 'none');
   assert.equal(asset.mediaUrl, null);
+});
+
+// ── Meta's own ad preview ───────────────────────────────────────────────────
+// Meta returns a fragment of HTML, not a URL, and it is HTML from an external
+// service — so the src is extracted and then checked, never trusted.
+
+test('the iframe src is lifted out of the returned markup', () => {
+  const body =
+    '<iframe src="https://www.facebook.com/ads/api/preview_iframe.php?d=ABC&amp;t=XYZ" width="320" height="568" scrolling="yes" style="border:none;"></iframe>';
+
+  assert.equal(
+    previewSrc(body),
+    'https://www.facebook.com/ads/api/preview_iframe.php?d=ABC&t=XYZ',
+    'entities are decoded so the query survives',
+  );
+});
+
+test('a protocol-relative src is made https', () => {
+  assert.equal(
+    previewSrc('<iframe src="//www.facebook.com/ads/api/preview_iframe.php?d=1"></iframe>'),
+    'https://www.facebook.com/ads/api/preview_iframe.php?d=1',
+  );
+});
+
+test('only Meta may be framed', () => {
+  // The body is HTML from an external service. An arbitrary src here would
+  // render whatever that service returned inside the dashboard.
+  assert.equal(previewSrc('<iframe src="https://evil.test/steal"></iframe>'), null);
+  assert.equal(previewSrc('<iframe src="https://facebook.com.evil.test/x"></iframe>'), null);
+  assert.equal(previewSrc('<iframe src="javascript:alert(1)"></iframe>'), null);
+  assert.equal(previewSrc('<iframe src="http://www.facebook.com/x"></iframe>'), null, 'plain http is refused');
+});
+
+test('a subdomain of facebook.com is still Meta', () => {
+  assert.match(previewSrc('<iframe src="https://web.facebook.com/ads/x"></iframe>') ?? '', /^https:\/\/web\.facebook\.com\//);
+});
+
+test('missing or malformed markup yields nothing rather than throwing', () => {
+  assert.equal(previewSrc(undefined), null);
+  assert.equal(previewSrc(''), null);
+  assert.equal(previewSrc('<div>no iframe here</div>'), null);
+  assert.equal(previewSrc('<iframe></iframe>'), null);
+  assert.equal(previewSrc('<iframe src="not a url"></iframe>'), null);
+});
+
+test('the preview travels with the rest of the creative', async () => {
+  const [asset] = await fetchFor([
+    {
+      id: '1',
+      name: 'Video A',
+      previews: { data: [{ body: '<iframe src="https://www.facebook.com/ads/api/preview_iframe.php?d=Q"></iframe>' }] },
+      creative: { image_url: 'https://scontent.test/full.jpg' },
+    },
+  ]);
+
+  assert.equal(asset.previewUrl, 'https://www.facebook.com/ads/api/preview_iframe.php?d=Q');
+  assert.equal(asset.mediaUrl, 'https://scontent.test/full.jpg', 'the stored asset is still there too');
+});
+
+test('an ad with no preview simply has none', async () => {
+  const [asset] = await fetchFor([{ id: '1', creative: { image_url: 'https://scontent.test/a.jpg' } }]);
+  assert.equal(asset.previewUrl, null);
 });

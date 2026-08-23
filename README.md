@@ -91,6 +91,7 @@ supabase/migrations/0005_ad_connections.sql
 supabase/migrations/0006_tighten_function_grants.sql
 supabase/migrations/0007_sync_cursor.sql
 supabase/migrations/0008_api_keys.sql
+supabase/migrations/0009_ad_preview.sql
 ```
 
 Selepas menjalankannya, **Advisors → Security** sepatutnya bersih kecuali dua
@@ -297,7 +298,7 @@ hanya untuk sistem akaun, tidak pernah untuk data kempen.
 npm install
 npm run dev        # http://localhost:3000
 npm run build      # binaan produksi
-npm test           # 120 ujian unit (parser, metrik, proxy, auth, penyulitan, adapter platform)
+npm test           # 135 ujian unit (parser, metrik, proxy, auth, penyulitan, adapter platform)
 npm run lint
 ```
 

@@ -102,6 +102,8 @@ export default async function CreativeDetailPage({
               url={creative.media_url}
               kind={creative.media_kind}
               thumbnail={creative.thumbnail_url}
+              preview={creative.preview_url}
+              autoPreview
               title={creative.ad_name}
             />
           </div>

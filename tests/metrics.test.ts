@@ -18,6 +18,7 @@ function row(patch: Partial<PerformanceRow> = {}): PerformanceRow {
     media_url: null,
     media_kind: 'none',
     thumbnail_url: null,
+    preview_url: null,
     external_ad_id: null,
     headline: null,
     body_copy: null,
