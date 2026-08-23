@@ -129,3 +129,52 @@ test('the scheduled sync refuses a wrong secret', async () => {
     else process.env.CRON_SECRET = saved;
   }
 });
+
+// ── the time budget ─────────────────────────────────────────────────────────
+
+test('the creative pull gets its own reserve, so it never starts with no time left', async () => {
+  // It used to run after the metrics loop had spent the whole budget, and a
+  // single Graph call can take twenty seconds — enough to push the function
+  // past its limit and return a gateway error instead of a response.
+  const source = await import('../src/lib/connections/sync');
+  const text = (await import('node:fs')).readFileSync('src/lib/connections/sync.ts', 'utf8');
+
+  assert.ok(source.DEFAULT_LOOKBACK_DAYS > 0);
+  assert.match(text, /metricsDeadline = started \+ BUDGET_MS - CREATIVE_RESERVE_MS/);
+  assert.match(text, /Date\.now\(\) < overallDeadline/, 'the creative pull checks the clock first');
+
+  const budget = Number(/const BUDGET_MS = ([\d_]+)/.exec(text)![1].replace(/_/g, ''));
+  const reserve = Number(/const CREATIVE_RESERVE_MS = ([\d_]+)/.exec(text)![1].replace(/_/g, ''));
+
+  assert.ok(reserve > 0 && reserve < budget, 'the reserve is a slice of the budget, not all of it');
+  // maxDuration on the Data page is 60s; the whole budget must fit inside it
+  // with room for the write that follows.
+  assert.ok(budget <= 50_000, `budget ${budget}ms leaves margin under the 60s limit`);
+});
+
+test('a creative listing stops paging once its deadline passes', async () => {
+  const { fetchMetaCreatives } = await import('@/lib/connections/meta');
+  const { mock } = await import('node:test');
+
+  let pages = 0;
+  mock.method(globalThis, 'fetch', async () => {
+    pages += 1;
+    return new Response(
+      JSON.stringify({ data: [{ id: String(pages) }], paging: { next: 'https://graph.facebook.com/next' } }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+  });
+
+  try {
+    // A deadline already in the past: one page is fetched, then it gives up.
+    const assets = await fetchMetaCreatives({
+      accessToken: 'tok',
+      accountId: 'act_1',
+      deadline: Date.now() - 1,
+    });
+    assert.equal(pages, 1, 'it does not keep paging into the timeout');
+    assert.equal(assets.length, 1, 'and returns what it did get');
+  } finally {
+    mock.restoreAll();
+  }
+});

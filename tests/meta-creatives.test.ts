@@ -214,3 +214,133 @@ test('an error that is not about page size is not retried', async () => {
   await assert.rejects(() => fetchMetaCreatives({ accessToken: 'tok', accountId: 'act_1' }), /Invalid OAuth/);
   assert.equal(attempts, 1, 'shrinking the page would not help here');
 });
+
+// ── video and poster assets ─────────────────────────────────────────────────
+// The still and the playable asset are different things, and conflating them
+// made every poster render at preview size and every video render as a picture.
+
+test('a poster keeps the full image, not the tiny preview Meta generates', async () => {
+  const [asset] = await fetchFor([
+    {
+      id: '1',
+      name: 'Poster',
+      creative: {
+        thumbnail_url: 'https://scontent.test/tiny_64x64.jpg',
+        image_url: 'https://scontent.test/full.jpg',
+      },
+    },
+  ]);
+
+  assert.equal(asset.mediaUrl, 'https://scontent.test/full.jpg', 'the grid shows the real image');
+  assert.equal(asset.thumbnailUrl, 'https://scontent.test/tiny_64x64.jpg');
+  assert.equal(asset.mediaKind, 'image');
+});
+
+test('a video ad is labelled a video and carries the playable file', async () => {
+  let call = 0;
+  mock.method(globalThis, 'fetch', async (url: string | URL) => {
+    call += 1;
+    const parsed = new URL(String(url));
+    const body =
+      call === 1
+        ? {
+            data: [
+              {
+                id: '1',
+                name: 'Video A',
+                creative: {
+                  object_story_spec: {
+                    video_data: { video_id: 'vid_9', image_url: 'https://scontent.test/still.jpg' },
+                  },
+                },
+              },
+            ],
+          }
+        : { vid_9: { source: 'https://video.test/vid_9.mp4', picture: 'https://scontent.test/pic.jpg' } };
+
+    if (call === 2) {
+      assert.equal(parsed.searchParams.get('ids'), 'vid_9', 'videos are read by id');
+    }
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const [asset] = await fetchMetaCreatives({ accessToken: 'tok', accountId: 'act_1' });
+
+  assert.equal(asset.mediaKind, 'video');
+  assert.equal(asset.mediaUrl, 'https://video.test/vid_9.mp4');
+  assert.equal(asset.thumbnailUrl, 'https://scontent.test/still.jpg', 'the creative still wins');
+});
+
+test('several videos are read in one batched call', async () => {
+  const calls: URL[] = [];
+  mock.method(globalThis, 'fetch', async (url: string | URL) => {
+    const parsed = new URL(String(url));
+    calls.push(parsed);
+    const body = calls.length === 1
+      ? {
+          data: [
+            { id: '1', creative: { video_id: 'v1' } },
+            { id: '2', creative: { video_id: 'v2' } },
+            { id: '3', creative: { video_id: 'v3' } },
+          ],
+        }
+      : { v1: { source: 's1' }, v2: { source: 's2' }, v3: { source: 's3' } };
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+
+  const assets = await fetchMetaCreatives({ accessToken: 'tok', accountId: 'act_1' });
+
+  assert.equal(calls.length, 2, 'one listing, one batch — not one call per video');
+  assert.deepEqual(assets.map((a) => a.mediaUrl), ['s1', 's2', 's3']);
+});
+
+test('a video whose file cannot be read stays a video', async () => {
+  // Mislabelling it an image would put a broken <img> where a player belongs.
+  let call = 0;
+  mock.method(globalThis, 'fetch', async () => {
+    call += 1;
+    if (call === 1) {
+      return new Response(
+        JSON.stringify({
+          data: [{ id: '1', creative: { object_story_spec: { video_data: { video_id: 'vid_9', image_url: 'https://scontent.test/still.jpg' } } } }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    return new Response(JSON.stringify({ error: { message: 'no access to this video', code: 100 } }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const [asset] = await fetchMetaCreatives({ accessToken: 'tok', accountId: 'act_1' });
+
+  assert.equal(asset.mediaKind, 'video');
+  assert.equal(asset.mediaUrl, null);
+  assert.equal(asset.thumbnailUrl, 'https://scontent.test/still.jpg', 'a poster beats a black tile');
+});
+
+test('a dynamic feed video is found too', async () => {
+  let call = 0;
+  mock.method(globalThis, 'fetch', async () => {
+    call += 1;
+    const body = call === 1
+      ? { data: [{ id: '1', creative: { asset_feed_spec: { videos: [{ video_id: 'v7', thumbnail_url: 'https://t.test/7.jpg' }] } } }] }
+      : { v7: { source: 'https://video.test/7.mp4' } };
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+
+  const [asset] = await fetchMetaCreatives({ accessToken: 'tok', accountId: 'act_1' });
+
+  assert.equal(asset.mediaKind, 'video');
+  assert.equal(asset.mediaUrl, 'https://video.test/7.mp4');
+});
+
+test('an ad with no asset at all is marked as having none', async () => {
+  const [asset] = await fetchFor([{ id: '1', name: 'Bare' }]);
+  assert.equal(asset.mediaKind, 'none');
+  assert.equal(asset.mediaUrl, null);
+});

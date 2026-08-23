@@ -717,6 +717,8 @@ export async function applyCreativeAssets(
   assets: {
     externalAdId: string;
     adName: string;
+    mediaUrl: string | null;
+    mediaKind: 'video' | 'image' | 'none';
     thumbnailUrl: string | null;
     headline: string | null;
     bodyCopy: string | null;
@@ -733,11 +735,12 @@ export async function applyCreativeAssets(
     await Promise.all(
       part.map(async (asset) => {
         const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-        if (asset.thumbnailUrl) {
-          patch.media_url = asset.thumbnailUrl;
-          patch.thumbnail_url = asset.thumbnailUrl;
-          patch.media_kind = 'image';
-        }
+        // The still and the playable asset are different things. Writing the
+        // thumbnail into media_url made every poster render at preview size,
+        // and every video render as a still image with no player.
+        if (asset.thumbnailUrl) patch.thumbnail_url = asset.thumbnailUrl;
+        if (asset.mediaUrl) patch.media_url = asset.mediaUrl;
+        if (asset.mediaKind !== 'none') patch.media_kind = asset.mediaKind;
         if (asset.headline) patch.headline = asset.headline;
         if (asset.bodyCopy) patch.body_copy = asset.bodyCopy;
         if (asset.landingUrl) {

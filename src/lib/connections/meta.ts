@@ -300,6 +300,10 @@ export async function describeMetaAdAccount(
 export interface MetaCreativeAsset {
   externalAdId: string;
   adName: string;
+  /** What to show or play: the video file for a video ad, the image otherwise. */
+  mediaUrl: string | null;
+  mediaKind: 'video' | 'image' | 'none';
+  /** A still, always. It outlives a video URL and keeps the tile from going black. */
   thumbnailUrl: string | null;
   headline: string | null;
   bodyCopy: string | null;
@@ -312,38 +316,60 @@ interface MetaAdRow {
   creative?: {
     thumbnail_url?: string;
     image_url?: string;
+    video_id?: string;
     title?: string;
     body?: string;
     object_story_spec?: {
-      link_data?: { message?: string; name?: string; link?: string };
-      video_data?: { message?: string; title?: string; call_to_action?: { value?: { link?: string } } };
+      link_data?: { message?: string; name?: string; link?: string; picture?: string };
+      video_data?: {
+        message?: string;
+        title?: string;
+        video_id?: string;
+        image_url?: string;
+        call_to_action?: { value?: { link?: string } };
+      };
     };
     asset_feed_spec?: {
       bodies?: { text?: string }[];
       titles?: { text?: string }[];
       link_urls?: { website_url?: string }[];
+      videos?: { video_id?: string; thumbnail_url?: string }[];
+      images?: { url?: string }[];
     };
   };
 }
 
 const CREATIVE_FIELDS =
-  'id,name,creative{thumbnail_url,image_url,title,body,object_story_spec,asset_feed_spec}';
+  'id,name,creative{thumbnail_url,image_url,video_id,title,body,object_story_spec,asset_feed_spec}';
 
 /**
  * Meta scatters the same three pieces of text across three shapes depending on
  * how the ad was built: a plain creative, a story spec, or a dynamic asset
  * feed. Reading only one of them leaves most of a real account blank.
  */
-function readCreative(row: MetaAdRow): MetaCreativeAsset {
+function readCreative(row: MetaAdRow): MetaCreativeAsset & { videoId: string | null } {
   const c = row.creative ?? {};
   const link = c.object_story_spec?.link_data;
   const video = c.object_story_spec?.video_data;
   const feed = c.asset_feed_spec;
 
+  const videoId = c.video_id ?? video?.video_id ?? feed?.videos?.[0]?.video_id ?? null;
+
+  // `image_url` is the real asset; `thumbnail_url` is a tiny preview Meta
+  // generates. Showing the latter in a grid tile makes every poster look
+  // blurry, so they are kept apart rather than treated as interchangeable.
+  const fullImage = c.image_url ?? link?.picture ?? feed?.images?.[0]?.url ?? null;
+  const still =
+    video?.image_url ?? feed?.videos?.[0]?.thumbnail_url ?? c.thumbnail_url ?? fullImage;
+
   return {
     externalAdId: row.id,
     adName: row.name?.trim() ?? row.id,
-    thumbnailUrl: c.thumbnail_url ?? c.image_url ?? null,
+    videoId,
+    // Filled in later for videos, once the video nodes have been read.
+    mediaUrl: videoId ? null : fullImage,
+    mediaKind: videoId ? 'video' : fullImage ? 'image' : 'none',
+    thumbnailUrl: still ?? null,
     headline: c.title ?? link?.name ?? video?.title ?? feed?.titles?.[0]?.text ?? null,
     bodyCopy: c.body ?? link?.message ?? video?.message ?? feed?.bodies?.[0]?.text ?? null,
     landingUrl:
@@ -358,6 +384,8 @@ export async function fetchMetaCreatives(options: {
   accessToken: string;
   accountId: string;
   campaignIds?: string[];
+  /** Stop paging past this moment and return what was gathered. */
+  deadline?: number;
 }): Promise<MetaCreativeAsset[]> {
   const account = options.accountId.startsWith('act_')
     ? options.accountId
@@ -376,12 +404,14 @@ export async function fetchMetaCreatives(options: {
 
   for (;;) {
     try {
-      return await listCreativePages({
+      const assets = await listCreativePages({
         account,
         accessToken: options.accessToken,
         filtering,
         limit,
+        deadline: options.deadline,
       });
+      return await attachVideos(options.accessToken, assets, options.deadline);
     } catch (error) {
       if (!isTooMuchData(error) || limit <= 5) throw error;
       limit = Math.max(5, Math.floor(limit / 2));
@@ -389,13 +419,84 @@ export async function fetchMetaCreatives(options: {
   }
 }
 
+async function attachVideos(
+  accessToken: string,
+  assets: (MetaCreativeAsset & { videoId: string | null })[],
+  deadline?: number,
+): Promise<MetaCreativeAsset[]> {
+  const ids = assets.map((a) => a.videoId).filter((id): id is string => Boolean(id));
+  const outOfTime = deadline !== undefined && Date.now() >= deadline;
+  const videos = ids.length > 0 && !outOfTime ? await readVideos(accessToken, ids, deadline) : new Map();
+
+  return assets.map(({ videoId, ...asset }) => {
+    if (!videoId) return asset;
+
+    const video = videos.get(videoId);
+    return {
+      ...asset,
+      mediaUrl: video?.source ?? null,
+      // Still a video even when the file could not be read — mislabelling it an
+      // image would put a broken <img> where a player belongs.
+      mediaKind: 'video' as const,
+      thumbnailUrl: asset.thumbnailUrl ?? video?.picture ?? null,
+    };
+  });
+}
+
+/**
+ * Reads the video files behind a set of video ids.
+ *
+ * Batched through `?ids=`, because an account of fifty video ads would
+ * otherwise be fifty round trips on top of the listing.
+ *
+ * Meta's `source` is a signed CDN URL that expires after a while. That is
+ * survivable here only because every sync refreshes it — and because the still
+ * is stored separately, so an expired video leaves a poster rather than a black
+ * tile.
+ */
+async function readVideos(
+  accessToken: string,
+  videoIds: string[],
+  deadline?: number,
+): Promise<Map<string, { source: string | null; picture: string | null }>> {
+  const found = new Map<string, { source: string | null; picture: string | null }>();
+  const unique = [...new Set(videoIds)];
+
+  for (const part of chunkIds(unique, 25)) {
+    if (deadline !== undefined && Date.now() >= deadline) break;
+    try {
+      const body = await graph<Record<string, { source?: string; picture?: string }>>('/', {
+        access_token: accessToken,
+        ids: part.join(','),
+        fields: 'source,picture',
+      });
+
+      for (const [id, node] of Object.entries(body)) {
+        found.set(id, { source: node?.source ?? null, picture: node?.picture ?? null });
+      }
+    } catch {
+      // A video the token cannot read must not cost the whole account its
+      // images; the ad simply keeps whatever still it already had.
+    }
+  }
+
+  return found;
+}
+
+function chunkIds<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 async function listCreativePages(input: {
   account: string;
   accessToken: string;
   filtering: string | null;
   limit: number;
-}): Promise<MetaCreativeAsset[]> {
-  const assets: MetaCreativeAsset[] = [];
+  deadline?: number;
+}): Promise<(MetaCreativeAsset & { videoId: string | null })[]> {
+  const assets: (MetaCreativeAsset & { videoId: string | null })[] = [];
   let url: string | null = null;
   let pages = 0;
 
@@ -413,6 +514,9 @@ async function listCreativePages(input: {
 
     url = body.paging?.next ?? null;
     pages += 1;
+    // Returning fewer ads is fine; the next sync picks up the rest. Running out
+    // of function time is not, because nothing at all comes back.
+    if (input.deadline !== undefined && Date.now() >= input.deadline) break;
   } while (url && pages < 200);
 
   return assets;

@@ -26,7 +26,18 @@ export interface SyncOutcome {
  * the covered range is recorded after every window, so the next run continues
  * rather than starting over.
  */
-const BUDGET_MS = 40_000;
+const BUDGET_MS = 45_000;
+
+/**
+ * Held back from the metrics pull for the creative assets.
+ *
+ * Without a reserve, the asset call started only once the budget was already
+ * spent, and a single Graph request can take twenty seconds — enough to push
+ * the whole function past its limit. A timeout there is worse than a slow sync,
+ * because the platform returns a gateway error page instead of a response, and
+ * the numbers already written go unreported.
+ */
+const CREATIVE_RESERVE_MS = 16_000;
 
 /** Meta and Google both settle their numbers for a few days after the fact. */
 export const DEFAULT_LOOKBACK_DAYS = 30;
@@ -43,7 +54,9 @@ export async function syncSource(
 ): Promise<SyncOutcome> {
   const target = windowFor(days);
   const platform = source.connection.platform;
-  const deadline = Date.now() + BUDGET_MS;
+  const started = Date.now();
+  const metricsDeadline = started + BUDGET_MS - CREATIVE_RESERVE_MS;
+  const overallDeadline = started + BUDGET_MS;
 
   let cover: { from: string | null; through: string | null } = {
     from: source.connection.synced_from,
@@ -98,17 +111,18 @@ export async function syncSource(
       cover = extended;
       done += 1;
 
-      if (Date.now() >= deadline) break;
+      if (Date.now() >= metricsDeadline) break;
     }
 
     // Once per run, not once per window: creative assets do not change by the
     // day, and the numbers are the part worth spending the budget on.
-    if (platform === 'meta' && rows > 0) {
+    if (platform === 'meta' && rows > 0 && Date.now() < overallDeadline) {
       try {
         const assets = await fetchMetaCreatives({
           accessToken,
           accountId: source.connection.external_account_id,
           campaignIds: source.platform_campaign_ids,
+          deadline: overallDeadline,
         });
         const applied = await applyCreativeAssets(source.campaign_id, assets);
         if (applied === 0 && assets.length > 0) {
