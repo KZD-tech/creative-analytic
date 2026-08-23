@@ -1,6 +1,6 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
-import { db } from './client';
+import { adminDb, db } from './client';
 import { adNameKey, landingKey } from '@/lib/ingest/normalize';
 import { classifyMedia } from '@/lib/ingest/mediaLinks';
 import type {
@@ -9,7 +9,7 @@ import type {
   NormalizedConversion,
   NormalizedMediaLink,
 } from '@/lib/ingest/adapter';
-import type { BatchKind } from '@/types/db';
+import type { BatchKind, ConversionSource } from '@/types/db';
 
 /** Above this, a batch ships without a rollback snapshot rather than bloating the row. */
 const MAX_SNAPSHOT_ROWS = 20_000;
@@ -52,8 +52,9 @@ interface CreativeSeed {
 export async function ensureCreatives(
   campaignId: string,
   ads: CreativeSeed[],
+  admin = false,
 ): Promise<Map<string, string>> {
-  const supabase = await (await db());
+  const supabase = admin ? adminDb() : await db();
   const byKey = new Map<string, CreativeSeed>();
   for (const ad of ads) {
     const key = adNameKey(ad.ad_name);
@@ -123,11 +124,14 @@ export async function ensureCreatives(
     if (error) throw new Error(`Gagal kemas kini kreatif: ${error.message}`);
   }
 
-  return loadCreativeIndex(campaignId);
+  return loadCreativeIndex(campaignId, admin);
 }
 
-export async function loadCreativeIndex(campaignId: string): Promise<Map<string, string>> {
-  const supabase = await (await db());
+export async function loadCreativeIndex(
+  campaignId: string,
+  admin = false,
+): Promise<Map<string, string>> {
+  const supabase = admin ? adminDb() : await db();
   const index = new Map<string, string>();
   const pageSize = 1000;
 
@@ -150,11 +154,12 @@ export async function loadCreativeIndex(campaignId: string): Promise<Map<string,
 async function openBatch(
   campaignId: string,
   kind: BatchKind,
-  source: 'csv' | 'meta_api' | 'google_ads' | 'manual',
+  source: ConversionSource,
   filename: string | null,
   snapshot: unknown[] | null,
+  admin = false,
 ): Promise<string> {
-  const supabase = await (await db());
+  const supabase = admin ? adminDb() : await db();
   const keepSnapshot = snapshot !== null && snapshot.length <= MAX_SNAPSHOT_ROWS;
 
   const { data, error } = await supabase
@@ -171,7 +176,7 @@ async function openBatch(
     .single();
 
   if (error) throw new Error(`Gagal buka batch: ${error.message}`);
-  await pruneSnapshots(campaignId, kind);
+  await pruneSnapshots(campaignId, kind, admin);
   return data.id as string;
 }
 
@@ -186,8 +191,9 @@ async function closeBatch(
     message?: string | null;
     warnings?: string[];
   },
+  admin = false,
 ) {
-  const supabase = await (await db());
+  const supabase = admin ? adminDb() : await db();
   const { error } = await supabase
     .from('upload_batches')
     .update({ ...patch, warnings: patch.warnings ?? [] })
@@ -196,8 +202,8 @@ async function closeBatch(
 }
 
 /** Keeps the newest N snapshots per kind; older batches stay in the log, payload dropped. */
-async function pruneSnapshots(campaignId: string, kind: BatchKind) {
-  const supabase = await (await db());
+async function pruneSnapshots(campaignId: string, kind: BatchKind, admin = false) {
+  const supabase = admin ? adminDb() : await db();
   const { data, error } = await supabase
     .from('upload_batches')
     .select('id')
@@ -219,8 +225,9 @@ async function readAll<T>(
   columns: string,
   campaignId: string,
   filters: Record<string, string> = {},
+  admin = false,
 ): Promise<T[]> {
-  const supabase = await (await db());
+  const supabase = admin ? adminDb() : await db();
   const out: T[] = [];
   const pageSize = 1000;
 
@@ -423,24 +430,40 @@ export function dedupeKey(item: NormalizedConversion): string {
 export async function writeConversions(
   campaignId: string,
   items: NormalizedConversion[],
-  opts: { filename: string | null; skipped: number; warnings: string[] },
+  opts: {
+    filename: string | null;
+    skipped: number;
+    warnings: string[];
+    /**
+     * Which producer these rows came from. It scopes the snapshot as well as
+     * the rows: sharing 'csv' with the API would put agent-written donations
+     * inside a spreadsheet's snapshot, so rolling that spreadsheet back would
+     * silently delete them.
+     */
+    source?: ConversionSource;
+    /** Uses the admin client, for callers that have no user session. */
+    admin?: boolean;
+  },
 ): Promise<WriteOutcome> {
-  const supabase = await (await db());
+  const source = opts.source ?? 'csv';
+  const supabase = opts.admin ? adminDb() : await db();
   const warnings = [...opts.warnings];
 
   const before = await readAll<Record<string, unknown>>(
     'conversions',
     'campaign_id, creative_id, external_id, dedupe_key, occurred_at, amount, channel, attribution_raw, matched_ad_name, match_method, source',
     campaignId,
-    { source: 'csv' },
+    { source },
+    opts.admin,
   );
-  const batchId = await openBatch(campaignId, 'conversions', 'csv', opts.filename, before);
+  const batchId = await openBatch(campaignId, 'conversions', source, opts.filename, before, opts.admin);
 
   try {
     const named = items.filter((i) => i.ad_name_hint);
     const index = await ensureCreatives(
       campaignId,
       named.map((i) => ({ ad_name: i.ad_name_hint as string })),
+      opts.admin,
     );
 
     const existingKeys = new Set(before.map((r) => String(r.dedupe_key)));
@@ -470,7 +493,7 @@ export async function writeConversions(
         attribution_raw: item.attribution_raw,
         matched_ad_name: hint,
         match_method: creativeId ? 'normalized' : 'unmatched',
-        source: 'csv',
+        source,
         batch_id: batchId,
       });
     }
@@ -506,7 +529,7 @@ export async function writeConversions(
       status: outcome.skipped > 0 ? 'partial' : 'ok',
       message: `${outcome.inserted} derma baru, ${outcome.updated} sudah wujud`,
       warnings,
-    });
+    }, opts.admin);
 
     return outcome;
   } catch (error) {
@@ -518,7 +541,7 @@ export async function writeConversions(
       status: 'error',
       message: error instanceof Error ? error.message : 'Ralat tidak diketahui',
       warnings,
-    });
+    }, opts.admin);
     throw error;
   }
 }

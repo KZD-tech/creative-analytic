@@ -1,3 +1,5 @@
+export type ConversionSource = 'csv' | 'meta_api' | 'google_ads' | 'manual' | 'api';
+
 export type TagDimension = 'hook' | 'format' | 'angle' | 'offer' | 'persona' | 'cta' | 'custom';
 
 export const TAG_DIMENSIONS: TagDimension[] = [
@@ -164,7 +166,7 @@ export interface UploadBatch {
   id: string;
   campaign_id: string;
   kind: BatchKind;
-  source: 'csv' | 'meta_api' | 'google_ads' | 'manual';
+  source: ConversionSource;
   filename: string | null;
   row_count: number;
   inserted_count: number;

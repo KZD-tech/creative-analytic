@@ -89,6 +89,8 @@ supabase/migrations/0003_auth_and_ownership.sql
 supabase/migrations/0004_creative_copy.sql
 supabase/migrations/0005_ad_connections.sql
 supabase/migrations/0006_tighten_function_grants.sql
+supabase/migrations/0007_sync_cursor.sql
+supabase/migrations/0008_api_keys.sql
 ```
 
 Selepas menjalankannya, **Advisors → Security** sepatutnya bersih kecuali dua
@@ -295,7 +297,7 @@ hanya untuk sistem akaun, tidak pernah untuk data kempen.
 npm install
 npm run dev        # http://localhost:3000
 npm run build      # binaan produksi
-npm test           # 69 ujian unit (parser, metrik, proxy, auth, penyulitan, adapter platform)
+npm test           # 120 ujian unit (parser, metrik, proxy, auth, penyulitan, adapter platform)
 npm run lint
 ```
 
@@ -482,6 +484,24 @@ atau dua supaya cache status provider (30 saat) menyegar.
 **`Emel ini tiada jemputan`** — memang dijangka. Tambah emel itu di
 `/settings/team` dahulu, atau, kalau ini akaun pertama, pastikan jadual
 `public.profiles` masih kosong supaya ia boleh bootstrap sebagai admin.
+
+---
+
+## API untuk ejen
+
+Dashboard menerima data dari luar melalui `/api/v1/` — direka untuk satu ejen
+yang menarik derma dari Onpay, memadankannya dengan iklan, dan menghantarnya
+masuk, menggantikan muat naik CSV manual.
+
+Kunci dicipta di **Kunci API** dalam menu akaun. Setiap kunci mewakili satu
+akaun, boleh dihadkan kepada satu kempen, dan dipaparkan sekali sahaja — hanya
+cincangan SHA-256 yang disimpan.
+
+Tiga endpoint: senarai kempen, senarai kreatif untuk dipadankan, dan hantar
+derma. Baris dari API disimpan dengan `source: 'api'`, berasingan daripada CSV,
+supaya rollback hamparan tidak memadam kerja ejen bersamanya.
+
+Butiran penuh, contoh `curl` dan nota keselamatan: [`docs/api.md`](docs/api.md).
 
 ---
 
