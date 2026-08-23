@@ -4,7 +4,9 @@ import Link from 'next/link';
 import { cn } from '@/lib/cn';
 import { money } from '@/lib/format';
 import { STATUS_LABELS } from '@/lib/metrics/derive';
-import { METRICS, isHighlighted, type HighlightRule, type MetricId } from '@/lib/metrics/catalog';
+import {
+  METRICS, isHighlighted, isUnreliable, type HighlightRule, type MetricId,
+} from '@/lib/metrics/catalog';
 import type { ReportRow } from '@/lib/metrics/rollup';
 import type { Tag } from '@/types/db';
 import { Badge } from '@/components/ui/primitives';
@@ -118,14 +120,16 @@ export function ReportCard({
           {metrics.map((id) => {
             const metric = METRICS[id];
             const good = isHighlighted(metric, row, rules[id]);
+            const unreliable = isUnreliable(metric, row);
             return (
               <div key={id} className="flex items-center justify-between gap-3">
                 <dt className="text-[12px] text-ink-2">{metric.label}</dt>
                 <dd
                   className={cn(
                     'tnum rounded-md px-1.5 py-0.5 text-[13px] font-semibold',
-                    good ? 'bg-good-soft text-good' : 'text-ink',
+                    good ? 'bg-good-soft text-good' : unreliable ? 'text-ink-3' : 'text-ink',
                   )}
+                  title={unreliable ? 'Belanja terlalu kecil untuk nisbah ini bermakna.' : undefined}
                 >
                   {metric.format(row, currency)}
                 </dd>

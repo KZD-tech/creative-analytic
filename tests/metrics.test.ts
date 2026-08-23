@@ -5,7 +5,7 @@ import { withDefaults, grade } from '@/lib/metrics/benchmarks';
 import { diagnose, leakSummary } from '@/lib/metrics/diagnose';
 import { groupRows, perCreative } from '@/lib/metrics/rollup';
 import { breakdownByDimension } from '@/lib/metrics/breakdown';
-import { highlightRules, isHighlighted, METRICS } from '@/lib/metrics/catalog';
+import { highlightRules, isHighlighted, isUnreliable, METRICS } from '@/lib/metrics/catalog';
 import type { PerformanceRow, Tag } from '@/types/db';
 
 const B = withDefaults('demo', null);
@@ -250,4 +250,66 @@ test('an ad with no campaign name is bucketed last, not hidden', () => {
     2,
     'every row still appears somewhere',
   );
+});
+
+// ── unjudged creatives must not be dressed as findings ──────────────────────
+// A creative below the spend threshold shows real donations but its ratios are
+// arithmetic on a denominator too small to mean anything.
+
+const cheap = () => row({ creative_id: 'x', ad_name: 'Tiny', spend: 2, revenue: 2295, conversions: 60 });
+const real = () => row({ creative_id: 'y', ad_name: 'Real', spend: 500, revenue: 3700, conversions: 74 });
+
+test('a creative with too little spend is never highlighted, however good its ratio looks', () => {
+  const rows = [cheap(), real()].map((r) => deriveCreative(r, B));
+  const rules = highlightRules(rows, ['roas', 'cpa'], B);
+
+  const [tiny, solid] = rows;
+  assert.equal(tiny.status, 'learning');
+  assert.ok(tiny.roas! > 1000, `the absurd ratio is still computed: ${tiny.roas}`);
+
+  assert.equal(isHighlighted(METRICS.roas, tiny, rules.roas), false, 'ROAS 1147x is not a win');
+  assert.equal(isHighlighted(METRICS.cpa, tiny, rules.cpa), false, 'CPA RM0.03 is not a win');
+  assert.notEqual(solid.status, 'learning');
+});
+
+test('unjudged rows do not set the bar that the judged ones are measured against', () => {
+  // Left in, a 1147x ROAS drags the top quartile so high that a genuinely
+  // strong creative stops being highlighted at all.
+  const rows = [cheap(), real(), row({ creative_id: 'z', ad_name: 'Also real', spend: 400, revenue: 2000, conversions: 40 })]
+    .map((r) => deriveCreative(r, B));
+
+  const rules = highlightRules(rows, ['roas'], B);
+  const withoutTiny = highlightRules(rows.slice(1), ['roas'], B);
+
+  assert.deepEqual(rules.roas, withoutTiny.roas, 'the tiny row changes nothing about the threshold');
+});
+
+test('ratios are dimmed for an unjudged creative, raw counts are not', () => {
+  const tiny = deriveCreative(cheap(), B);
+
+  assert.equal(isUnreliable(METRICS.roas, tiny), true);
+  assert.equal(isUnreliable(METRICS.cpa, tiny), true);
+  // Spend and impressions are counts, not ratios — they happened, so they read
+  // normally.
+  assert.equal(isUnreliable(METRICS.spend, tiny), false);
+  assert.equal(isUnreliable(METRICS.impressions, tiny), false);
+});
+
+test('a judged creative is never dimmed', () => {
+  const solid = deriveCreative(real(), B);
+  for (const id of ['roas', 'cpa', 'spend'] as const) {
+    assert.equal(isUnreliable(METRICS[id], solid), false, id);
+  }
+});
+
+test('when every creative is unjudged, the thresholds still come from somewhere', () => {
+  // Falling back to the whole set keeps a brand-new campaign from rendering
+  // with no highlights at all.
+  const rows = [cheap(), row({ creative_id: 'b', ad_name: 'Tiny 2', spend: 3, revenue: 100, conversions: 2 })]
+    .map((r) => deriveCreative(r, B));
+
+  const rules = highlightRules(rows, ['roas'], B);
+  assert.ok(rules.roas, 'a rule is produced rather than crashing on an empty pool');
+  // Still nothing is highlighted, because the rows themselves are unjudged.
+  assert.equal(isHighlighted(METRICS.roas, rows[0], rules.roas), false);
 });

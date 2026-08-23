@@ -135,6 +135,13 @@ export function highlightRules(
 ): Record<string, HighlightRule> {
   const rules: Record<string, HighlightRule> = {};
 
+  // A creative below the spend threshold is not being judged, so it must not
+  // take part in judging others either. One donation on RM2 of spend reads as
+  // 1,147x, and letting that set the top quartile pushes the bar so high that
+  // genuinely strong creatives stop being highlighted at all.
+  const judged = rows.filter((row) => row.status !== 'learning');
+  const pool = judged.length > 0 ? judged : rows;
+
   for (const id of metrics) {
     const def = METRICS[id];
 
@@ -147,7 +154,7 @@ export function highlightRules(
       continue;
     }
 
-    const values = rows
+    const values = pool
       .map((row) => def.value(row))
       .filter((v): v is number => v !== null && Number.isFinite(v) && v > 0)
       .sort((a, z) => (def.direction === 'high' ? z - a : a - z));
@@ -176,8 +183,25 @@ export function isHighlighted(
   row: CreativeMetrics,
   rule: HighlightRule | undefined,
 ): boolean {
+  // Green says "this one is doing well". A creative with too little spend to
+  // judge cannot have earned that, whatever its ratios happen to say.
+  if (row.status === 'learning') return false;
+
   if (!rule || rule.kind === 'none' || rule.threshold === null) return false;
   const value = metric.value(row);
   if (value === null || !Number.isFinite(value) || value <= 0) return false;
   return metric.direction === 'low' ? value <= rule.threshold : value >= rule.threshold;
+}
+
+/**
+ * Whether a value should be shown muted rather than as a finding.
+ *
+ * A creative below the spend threshold still has real counts — it genuinely
+ * received those donations — but its *ratios* are arithmetic on a denominator
+ * too small to mean anything. Showing "1147.78x" in the same weight as a
+ * hard-won 7x invites exactly the wrong conclusion, so the derived figures are
+ * dimmed while the raw counts stay legible.
+ */
+export function isUnreliable(metric: MetricDef, row: CreativeMetrics): boolean {
+  return row.status === 'learning' && metric.direction !== 'none';
 }

@@ -3,7 +3,9 @@
 import Link from 'next/link';
 import { cn } from '@/lib/cn';
 import { STATUS_LABELS } from '@/lib/metrics/derive';
-import { METRICS, isHighlighted, type HighlightRule, type MetricId } from '@/lib/metrics/catalog';
+import {
+  METRICS, isHighlighted, isUnreliable, type HighlightRule, type MetricId,
+} from '@/lib/metrics/catalog';
 import type { ReportRow } from '@/lib/metrics/rollup';
 
 export function ReportTable({
@@ -93,12 +95,14 @@ export function ReportTable({
               {metrics.map((id) => {
                 const metric = METRICS[id];
                 const good = isHighlighted(metric, row, rules[id]);
+                const unreliable = isUnreliable(metric, row);
                 return (
                   <td key={id} className="px-3 py-2 text-right">
                     <span
+                      title={unreliable ? 'Belanja terlalu kecil untuk nisbah ini bermakna.' : undefined}
                       className={cn(
                         'tnum rounded-md px-1.5 py-0.5 font-medium',
-                        good ? 'bg-good-soft font-semibold text-good' : 'text-ink',
+                        good ? 'bg-good-soft font-semibold text-good' : unreliable ? 'text-ink-3' : 'text-ink',
                       )}
                     >
                       {metric.format(row, currency)}
