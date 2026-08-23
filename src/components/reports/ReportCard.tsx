@@ -47,7 +47,7 @@ export function ReportCard({
         selected ? 'border-accent ring-1 ring-accent' : 'border-line hover:shadow-lg',
       )}
     >
-      <div className="relative w-full overflow-hidden bg-[#141413]" style={{ paddingTop: '100%' }}>
+      <div className="relative w-full overflow-hidden bg-[#141413]" style={{ paddingTop: '125%' }}>
         <MediaThumb
           url={row.media_url}
           kind={row.media_kind}

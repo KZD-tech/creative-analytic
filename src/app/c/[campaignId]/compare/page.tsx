@@ -135,7 +135,7 @@ export default async function ComparePage({
           const verdict = diagnose(item, benchmarks);
           return (
             <Card key={item.creative_id} className="overflow-hidden">
-              <div className="relative w-full bg-[#141413]" style={{ paddingTop: '100%' }}>
+              <div className="relative w-full bg-[#141413]" style={{ paddingTop: '125%' }}>
                 <MediaThumb
                   url={item.media_url}
                   kind={item.media_kind}
