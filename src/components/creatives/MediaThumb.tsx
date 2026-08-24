@@ -1,9 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { Play, VideoOff } from 'lucide-react';
 import { youtubeId } from '@/lib/ingest/mediaLinks';
 import type { MediaKind } from '@/types/db';
+
+// Grid tiles are ~215px wide; the compare and single-creative pages run
+// wider. This is an approximation shared by all three, so Next fetches a
+// reasonably-sized file instead of the source asset's full resolution.
+const SIZES = '(min-width: 1400px) 215px, (min-width: 640px) 33vw, 50vw';
 
 /**
  * YouTube embeds are heavy, and a grid can hold fifty of them. Only the poster
@@ -65,12 +71,12 @@ export function MediaThumb({
         className="group absolute inset-0 cursor-pointer overflow-hidden"
         aria-label={`Main video ${title}`}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           src={thumbnail ?? `https://i.ytimg.com/vi/${id}/hqdefault.jpg`}
           alt=""
-          loading="lazy"
-          className="size-full object-cover"
+          fill
+          sizes={SIZES}
+          className="object-cover"
           onError={(event) => {
             // Shorts and very new uploads sometimes lack hqdefault; mqdefault
             // always exists. Falling back once avoids an empty black tile.
@@ -94,13 +100,11 @@ export function MediaThumb({
         <source src={url} />
       </video>
     ) : kind === 'image' && url ? (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={url} alt={title} loading="lazy" className="absolute inset-0 size-full object-cover" />
+      <Image src={url} alt={title} fill sizes={SIZES} className="object-cover" />
     ) : thumbnail ? (
       // A video whose signed URL has expired still has its still, and a poster
       // beats an empty tile.
-      // eslint-disable-next-line @next/next/no-img-element
-      <img src={thumbnail} alt={title} loading="lazy" className="absolute inset-0 size-full object-cover" />
+      <Image src={thumbnail} alt={title} fill sizes={SIZES} className="object-cover" />
     ) : (
       <div className="absolute inset-0 grid place-items-center gap-1.5 text-ink-muted">
         <VideoOff size={22} strokeWidth={1.5} className="mx-auto opacity-50" />
