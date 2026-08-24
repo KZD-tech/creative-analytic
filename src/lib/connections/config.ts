@@ -41,6 +41,27 @@ export function googleAdsConfig() {
   };
 }
 
+/**
+ * The direct route for Google Ads: a refresh token obtained once by hand
+ * (OAuth Playground, a script, or a prior consent) instead of going through
+ * this app's own OAuth consent screen — the same shortcut
+ * `META_SYSTEM_USER_TOKEN` offers for Meta, for a team that owns its own
+ * accounts and does not need per-user login.
+ *
+ * `GOOGLE_ADS_CUSTOMER_ID` is optional: without it the token is asked which
+ * accounts it can reach via `listAccessibleCustomers`. Naming it explicitly
+ * skips that call, comma-separated for more than one sub-account.
+ */
+export function googleAdsDirectConfig(): { refreshToken: string; customerIds: string[] } {
+  return {
+    refreshToken: process.env.GOOGLE_ADS_REFRESH_TOKEN?.trim() ?? '',
+    customerIds: (process.env.GOOGLE_ADS_CUSTOMER_ID ?? '')
+      .split(/[\s,]+/)
+      .map((id) => id.trim().replace(/-/g, ''))
+      .filter(Boolean),
+  };
+}
+
 
 /**
  * The direct route: a system-user token generated in Business Settings instead

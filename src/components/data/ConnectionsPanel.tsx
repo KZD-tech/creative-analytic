@@ -3,8 +3,8 @@
 import { useActionState } from 'react';
 import { KeyRound, Link2, PlugZap, RefreshCw, Unlink } from 'lucide-react';
 import {
-  disconnectAction, importSystemUserAction, linkConnectionAction, syncCampaignAction,
-  unlinkConnectionAction, type ConnectionResult,
+  disconnectAction, importGoogleAdsDirectAction, importSystemUserAction, linkConnectionAction,
+  syncCampaignAction, unlinkConnectionAction, type ConnectionResult,
 } from '@/app/connections-actions';
 import type { AdConnection, CampaignSource } from '@/lib/db/connections';
 import type { PlatformStatus } from '@/lib/connections/config';
@@ -78,6 +78,32 @@ export function ImportSystemUserButton({ campaignId }: { campaignId: string }) {
         </SubmitButton>
         <span className="text-[12px] text-ink-3">
           Token dari Business Settings, tanpa OAuth.
+        </span>
+      </form>
+      {state && (
+        <div className="mt-2">
+          <Notice tone={state.ok ? 'ok' : 'error'}>{state.message}</Notice>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ImportGoogleAdsDirectButton({ campaignId }: { campaignId: string }) {
+  const [state, action] = useActionState<ConnectionResult | null, FormData>(
+    importGoogleAdsDirectAction,
+    null,
+  );
+
+  return (
+    <div className="w-full">
+      <form action={action} className="flex items-center gap-2">
+        <input type="hidden" name="campaign_id" value={campaignId} />
+        <SubmitButton variant="secondary">
+          <KeyRound size={14} /> Guna refresh token Google Ads
+        </SubmitButton>
+        <span className="text-[12px] text-ink-3">
+          Refresh token sedia ada, tanpa skrin kebenaran Google.
         </span>
       </form>
       {state && (

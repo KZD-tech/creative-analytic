@@ -1,6 +1,9 @@
 import 'server-only';
 import { describeMetaAdAccount, listMetaAdAccounts } from '@/lib/connections/meta';
-import { metaConfig, systemUserConfig } from '@/lib/connections/config';
+import { listGoogleAdsCustomers, refreshGoogleToken } from '@/lib/connections/googleAds';
+import {
+  googleAdsConfig, googleAdsDirectConfig, metaConfig, systemUserConfig,
+} from '@/lib/connections/config';
 import { saveConnection, linkCampaign } from '@/lib/db/connections';
 import type { MetaAdAccount } from '@/lib/connections/meta';
 
@@ -41,4 +44,66 @@ export async function importSystemUserConnection(input: {
   }
 
   return { imported: accounts };
+}
+
+/**
+ * Turns a Google Ads refresh token from the environment into a saved
+ * connection, without the account owner going through this app's own
+ * consent screen.
+ *
+ * A pasted-in refresh token has no accompanying access token, unlike Meta's
+ * long-lived system-user token, so this exchanges it once up front — which
+ * doubles as proof the token, client id/secret and developer token actually
+ * work together before anything is saved. Every sync after this refreshes it
+ * again on its own (see `syncSource` in `lib/connections/sync.ts`).
+ */
+export async function importGoogleAdsDirectConnection(input: {
+  userId: string;
+  campaignId: string;
+}): Promise<{ imported: string[] }> {
+  const { refreshToken, customerIds } = googleAdsDirectConfig();
+  if (!refreshToken) throw new Error('GOOGLE_ADS_REFRESH_TOKEN belum diisi.');
+
+  const config = googleAdsConfig();
+  if (!config.clientId || !config.clientSecret) {
+    throw new Error('GOOGLE_ADS_CLIENT_ID / GOOGLE_ADS_CLIENT_SECRET belum diisi.');
+  }
+  if (!config.developerToken) throw new Error('GOOGLE_ADS_DEVELOPER_TOKEN belum diisi.');
+
+  const token = await refreshGoogleToken({
+    clientId: config.clientId,
+    clientSecret: config.clientSecret,
+    refreshToken,
+  });
+
+  // Named accounts skip the lookup; without them, ask the token what it can
+  // reach — same shape as Meta's system-user import above.
+  const customers = customerIds.length > 0
+    ? customerIds
+    : await listGoogleAdsCustomers({
+        accessToken: token.accessToken,
+        developerToken: config.developerToken,
+      });
+
+  if (customers.length === 0) {
+    throw new Error('Tiada akaun Google Ads dijumpai untuk refresh token ini.');
+  }
+
+  for (const id of customers) {
+    const connectionId = await saveConnection({
+      ownerId: input.userId,
+      platform: 'google_ads',
+      externalAccountId: id,
+      accountName: `Google Ads ${id}`,
+      currency: null,
+      timezone: null,
+      loginCustomerId: config.loginCustomerId,
+      accessToken: token.accessToken,
+      refreshToken,
+      expiresAt: token.expiresAt,
+    });
+    await linkCampaign({ campaignId: input.campaignId, connectionId });
+  }
+
+  return { imported: customers };
 }

@@ -7,7 +7,7 @@ import {
 } from '@/lib/db/connections';
 import { syncSource } from '@/lib/connections/sync';
 import { getCampaign } from '@/lib/db/queries';
-import { importSystemUserConnection } from './api/connect/_import';
+import { importGoogleAdsDirectConnection, importSystemUserConnection } from './api/connect/_import';
 
 export interface ConnectionResult {
   ok: boolean;
@@ -157,6 +157,34 @@ export async function importSystemUserAction(
       message: imported.length === 1
         ? `${imported[0].name} disambungkan.`
         : `${imported.length} akaun disambungkan: ${imported.map((a) => a.name).join(', ')}.`,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Import gagal.' };
+  }
+}
+
+/**
+ * Same shortcut as above, for Google Ads: a refresh token pasted into
+ * GOOGLE_ADS_REFRESH_TOKEN instead of this app's own OAuth consent screen.
+ *
+ * Only offered when that env var is set.
+ */
+export async function importGoogleAdsDirectAction(
+  _prev: ConnectionResult | null,
+  formData: FormData,
+): Promise<ConnectionResult> {
+  const user = await requireUser();
+  const campaignId = String(formData.get('campaign_id') ?? '');
+  if (!campaignId) return { ok: false, message: 'Kempen tidak dinyatakan.' };
+
+  try {
+    const { imported } = await importGoogleAdsDirectConnection({ userId: user.id, campaignId });
+    revalidatePath('/', 'layout');
+    return {
+      ok: true,
+      message: imported.length === 1
+        ? `Akaun Google Ads ${imported[0]} disambungkan.`
+        : `${imported.length} akaun Google Ads disambungkan: ${imported.join(', ')}.`,
     };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Import gagal.' };

@@ -1,14 +1,14 @@
 import { getBenchmarks, getCampaign, listBatches, listSnapshots } from '@/lib/db/queries';
 import { listCampaignSources, listConnections } from '@/lib/db/connections';
-import { platformStatus, systemUserConfig } from '@/lib/connections/config';
+import { googleAdsDirectConfig, platformStatus, systemUserConfig } from '@/lib/connections/config';
 import { load } from '@/lib/db/safe';
 import { SetupNotice } from '@/components/SetupNotice';
 import { UploadPanel } from '@/components/data/UploadPanel';
 import { RollbackList } from '@/components/data/RollbackList';
 import { BenchmarkForm } from '@/components/data/BenchmarkForm';
 import {
-  ConnectButtons, ConnectFeedback, ImportSystemUserButton, LastSyncLine, LinkedSources,
-  SyncButton,
+  ConnectButtons, ConnectFeedback, ImportGoogleAdsDirectButton, ImportSystemUserButton,
+  LastSyncLine, LinkedSources, SyncButton,
 } from '@/components/data/ConnectionsPanel';
 import { Card, CardHeader, SectionTitle, Badge } from '@/components/ui/primitives';
 import { dateTime } from '@/lib/format';
@@ -83,6 +83,9 @@ export default async function DataPage({
             <ConnectButtons campaignId={campaignId} statuses={statuses} />
             {systemUserConfig().token !== '' && (
               <ImportSystemUserButton campaignId={campaignId} />
+            )}
+            {googleAdsDirectConfig().refreshToken !== '' && (
+              <ImportGoogleAdsDirectButton campaignId={campaignId} />
             )}
             <LinkedSources campaignId={campaignId} sources={sources} connections={connections} />
             {sources.length > 0 ? (
