@@ -51,7 +51,7 @@ export default async function InsightsPage({
   if (performance.length === 0) {
     return (
       <EmptyState title="Belum ada data">
-        Muat naik eksport Ads Manager di tab <strong>Data</strong> dahulu.
+        Sambungkan akaun iklan di tab <strong>Data</strong> dahulu.
       </EmptyState>
     );
   }

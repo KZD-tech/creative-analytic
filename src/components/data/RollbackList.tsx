@@ -28,8 +28,8 @@ export function RollbackList({
   if (snapshots.length === 0) {
     return (
       <p className="px-5 pb-4 text-[12px] text-ink-muted">
-        Tiada snapshot lagi. Setiap muat naik Meta Ads atau derma menyimpan keadaan sebelumnya
-        secara automatik; lima yang terkini dikekalkan.
+        Tiada snapshot lagi. Setiap penulisan data (sync API atau import) menyimpan keadaan
+        sebelumnya secara automatik; lima yang terkini dikekalkan.
       </p>
     );
   }
@@ -59,7 +59,7 @@ export function RollbackList({
               onSubmit={(event) => {
                 if (
                   !confirm(
-                    'Rollback akan menggantikan data semasa dengan keadaan sebelum muat naik ini. Teruskan?',
+                    'Rollback akan menggantikan data semasa dengan keadaan sebelum ini. Teruskan?',
                   )
                 ) {
                   event.preventDefault();

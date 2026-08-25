@@ -35,7 +35,7 @@ export const REPORTS: ReportDef[] = [
     icon: '🎬',
     defaultSort: 'roas',
     defaultMetrics: ['roas', 'spend', 'revenue', 'conversions', 'cpa'],
-    emptyHint: 'Muat naik eksport Ads Manager di tab Data untuk mengisi laporan ini.',
+    emptyHint: 'Sambungkan akaun iklan di tab Data untuk mengisi laporan ini.',
     build: ({ rows, benchmarks }) => perCreative(rows, benchmarks),
   },
   {
@@ -45,8 +45,7 @@ export const REPORTS: ReportDef[] = [
     icon: '🖥️',
     defaultSort: 'cvr',
     defaultMetrics: ['cvr', 'lpv', 'conversions', 'revenue', 'roas'],
-    emptyHint:
-      'Tiada URL destinasi dalam data. Tambah lajur "Link" pada eksport Ads Manager, kemudian muat naik semula.',
+    emptyHint: 'Tiada URL destinasi dalam data yang disegerak setakat ini.',
     build: ({ rows, benchmarks }) =>
       rollup(rows, benchmarks, {
         keyOf: (row) => row.landing_key,
@@ -62,8 +61,7 @@ export const REPORTS: ReportDef[] = [
     icon: '📝',
     defaultSort: 'roas',
     defaultMetrics: ['roas', 'ctr', 'conversions', 'revenue', 'spend'],
-    emptyHint:
-      'Tiada teks iklan dalam data. Tambah lajur "Body" pada eksport Ads Manager, kemudian muat naik semula.',
+    emptyHint: 'Tiada teks iklan dalam data yang disegerak setakat ini.',
     build: ({ rows, benchmarks }) =>
       rollup(rows, benchmarks, {
         keyOf: (row) => (row.body_copy ? row.body_copy.trim().toLowerCase() : null),
@@ -78,8 +76,7 @@ export const REPORTS: ReportDef[] = [
     icon: '🎯',
     defaultSort: 'ctr',
     defaultMetrics: ['ctr', 'roas', 'conversions', 'revenue', 'spend'],
-    emptyHint:
-      'Tiada tajuk iklan dalam data. Tambah lajur "Title" pada eksport Ads Manager, kemudian muat naik semula.',
+    emptyHint: 'Tiada tajuk iklan dalam data yang disegerak setakat ini.',
     build: ({ rows, benchmarks }) =>
       rollup(rows, benchmarks, {
         keyOf: (row) => (row.headline ? row.headline.trim().toLowerCase() : null),
@@ -94,8 +91,7 @@ export const REPORTS: ReportDef[] = [
     icon: '🎥',
     defaultSort: 'roas',
     defaultMetrics: ['roas', 'hookRate', 'holdRate', 'conversions', 'revenue'],
-    emptyHint:
-      'Tiada kreatif video dikesan. Muat naik CSV Video Links supaya setiap iklan tahu medianya.',
+    emptyHint: 'Tiada kreatif video dikesan dalam kempen ini.',
     build: ({ rows, benchmarks }) =>
       perCreative(
         rows.filter((row) => row.media_kind === 'video' || row.media_kind === 'youtube'),
@@ -150,8 +146,7 @@ export const REPORTS: ReportDef[] = [
     icon: '📼',
     defaultSort: 'retention',
     defaultMetrics: ['retention', 'hookRate', 'holdRate', 'impressions'],
-    emptyHint:
-      'Tiada data pengekalan video. Sertakan lajur "Video plays at 25%…100%" dalam eksport Ads Manager.',
+    emptyHint: 'Tiada data pengekalan video dalam data yang disegerak setakat ini.',
     build: ({ rows, benchmarks }) =>
       perCreative(rows.filter((row) => row.video_p25 > 0), benchmarks),
   },

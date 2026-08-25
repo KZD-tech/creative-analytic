@@ -67,8 +67,7 @@ export default async function OverviewPage({
   if (performance.length === 0) {
     return (
       <EmptyState title="Belum ada data untuk kempen ini">
-        Muat naik eksport Ads Manager dan fail derma di tab <strong>Data</strong>, kemudian
-        kembali ke sini.
+        Sambungkan akaun iklan di tab <strong>Data</strong>, kemudian kembali ke sini.
       </EmptyState>
     );
   }
@@ -126,9 +125,9 @@ export default async function OverviewPage({
 
       {!hasDailyAds ? (
         <Notice tone="info" title="Graf belanja harian tidak tersedia">
-          Eksport Ads Manager yang dimuat naik tiada pecahan harian, jadi hanya sisi derma
-          mempunyai garis masa. Dalam Ads Manager pilih <em>Reports → Breakdown → By Day</em>{' '}
-          sebelum eksport untuk mengaktifkan graf belanja.
+          Data yang ada tiada pecahan harian, jadi hanya sisi derma mempunyai garis masa.
+          Sambungkan akaun Meta Ads atau Google Ads di tab <strong>Data</strong> untuk mengaktifkan
+          graf belanja — sync API sentiasa bawa pecahan harian.
         </Notice>
       ) : null}
 

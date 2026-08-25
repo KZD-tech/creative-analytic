@@ -1,38 +1,4 @@
-import { hasAnyColumn, parseCsv, pick } from './csv';
-import type { IngestResult, NormalizedMediaLink } from './adapter';
 import type { MediaKind } from '@/types/db';
-
-const A = {
-  adName: ['ad_name', 'nama_iklan', 'ad'],
-  url: ['youtube_url', 'video_url', 'url', 'media_url', 'link'],
-};
-
-export function parseMediaLinksCsv(text: string): IngestResult<NormalizedMediaLink> {
-  const { rows, warnings } = parseCsv(text);
-  const items: NormalizedMediaLink[] = [];
-  let skipped = 0;
-
-  if (!hasAnyColumn(rows, A.adName) || !hasAnyColumn(rows, A.url)) {
-    return {
-      items,
-      warnings: [...warnings, 'Perlu dua lajur: "ad_name" dan "youtube_url".'],
-      skipped: rows.length,
-    };
-  }
-
-  for (const row of rows) {
-    const adName = pick(row, A.adName)?.trim();
-    const url = pick(row, A.url)?.trim();
-    if (!adName || !url) {
-      skipped += 1;
-      continue;
-    }
-    items.push({ ad_name: adName, media_url: url });
-  }
-
-  if (skipped > 0) warnings.push(`${skipped} baris dilangkau kerana tiada nama iklan atau URL.`);
-  return { items, warnings, skipped };
-}
 
 const YT_PATTERNS = [
   /youtu\.be\/([\w-]{6,})/,

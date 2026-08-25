@@ -2,12 +2,10 @@ import 'server-only';
 import { createHash } from 'node:crypto';
 import { adminDb, db } from './client';
 import { adNameKey, landingKey } from '@/lib/ingest/normalize';
-import { classifyMedia } from '@/lib/ingest/mediaLinks';
 import type {
   MetricSource,
   NormalizedAdMetric,
   NormalizedConversion,
-  NormalizedMediaLink,
 } from '@/lib/ingest/adapter';
 import type { BatchKind, ConversionSource } from '@/types/db';
 
@@ -563,115 +561,6 @@ export async function writeConversions(
       message: error instanceof Error ? error.message : 'Ralat tidak diketahui',
       warnings,
     }, opts.admin);
-    throw error;
-  }
-}
-
-/**
- * Conversions that arrived before the ad they belong to. Re-runs matching over
- * every unmatched row, so uploading FB Ads after Onpay still ends up joined.
- */
-export async function rematchConversions(campaignId: string): Promise<number> {
-  const supabase = await (await db());
-  const index = await loadCreativeIndex(campaignId);
-
-  const pending = await readAll<{ id: number; matched_ad_name: string | null }>(
-    'conversions',
-    'id, matched_ad_name',
-    campaignId,
-    { match_method: 'unmatched' },
-  );
-
-  let matched = 0;
-  const updates: { id: number; creative_id: string }[] = [];
-  for (const row of pending) {
-    if (!row.matched_ad_name) continue;
-    const creativeId = index.get(adNameKey(row.matched_ad_name));
-    if (creativeId) {
-      updates.push({ id: row.id, creative_id: creativeId });
-      matched += 1;
-    }
-  }
-
-  for (const part of chunk(updates, 200)) {
-    await Promise.all(
-      part.map((u) =>
-        supabase
-          .from('conversions')
-          .update({ creative_id: u.creative_id, match_method: 'normalized' })
-          .eq('id', u.id),
-      ),
-    );
-  }
-
-  return matched;
-}
-
-// ── media links ─────────────────────────────────────────────────────────────
-
-export async function writeMediaLinks(
-  campaignId: string,
-  items: NormalizedMediaLink[],
-  opts: { filename: string | null; skipped: number; warnings: string[] },
-): Promise<WriteOutcome> {
-  const supabase = await (await db());
-  const batchId = await openBatch(campaignId, 'media_links', 'csv', opts.filename, null);
-
-  try {
-    const index = await ensureCreatives(campaignId, items.map((i) => ({ ad_name: i.ad_name })));
-    let applied = 0;
-
-    for (const part of chunk(items, 100)) {
-      await Promise.all(
-        part.map(async (item) => {
-          const creativeId = index.get(adNameKey(item.ad_name));
-          if (!creativeId) return;
-          const { kind, thumbnail } = classifyMedia(item.media_url);
-          const { error } = await supabase
-            .from('creatives')
-            .update({
-              media_url: item.media_url,
-              media_kind: kind,
-              thumbnail_url: thumbnail,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', creativeId);
-          if (!error) applied += 1;
-        }),
-      );
-    }
-
-    const outcome: WriteOutcome = {
-      batchId,
-      rowCount: items.length,
-      inserted: applied,
-      updated: 0,
-      skipped: opts.skipped + (items.length - applied),
-      warnings: opts.warnings,
-      snapshotRows: 0,
-    };
-
-    await closeBatch(batchId, {
-      row_count: outcome.rowCount,
-      inserted_count: outcome.inserted,
-      updated_count: 0,
-      skipped_count: outcome.skipped,
-      status: outcome.skipped > 0 ? 'partial' : 'ok',
-      message: `${applied} pautan video dikemas kini`,
-      warnings: opts.warnings,
-    });
-
-    return outcome;
-  } catch (error) {
-    await closeBatch(batchId, {
-      row_count: items.length,
-      inserted_count: 0,
-      updated_count: 0,
-      skipped_count: items.length,
-      status: 'error',
-      message: error instanceof Error ? error.message : 'Ralat tidak diketahui',
-      warnings: opts.warnings,
-    });
     throw error;
   }
 }

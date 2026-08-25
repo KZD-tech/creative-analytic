@@ -60,7 +60,7 @@ export function FatigueChart({ rows }: { rows: CreativeDailyRow[] }) {
     return (
       <ChartFrame title="Keletihan kreatif" subtitle="Perlu sekurang-kurangnya dua hari data harian.">
         <div className="grid h-full place-items-center text-[12px] text-ink-muted">
-          Muat naik eksport Ads Manager dengan pecahan harian untuk melihat lengkung ini.
+          Perlu sekurang-kurangnya dua hari data disegerak untuk melihat lengkung ini.
         </div>
       </ChartFrame>
     );

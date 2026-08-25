@@ -3,7 +3,6 @@ import { listCampaignSources, listConnections } from '@/lib/db/connections';
 import { googleAdsDirectConfig, platformStatus, systemUserConfig } from '@/lib/connections/config';
 import { load } from '@/lib/db/safe';
 import { SetupNotice } from '@/components/SetupNotice';
-import { UploadPanel } from '@/components/data/UploadPanel';
 import { RollbackList } from '@/components/data/RollbackList';
 import { BenchmarkForm } from '@/components/data/BenchmarkForm';
 import {
@@ -75,7 +74,7 @@ export default async function DataPage({
         <SectionTitle>Akaun iklan bersambung</SectionTitle>
         <Card>
           <CardHeader
-            title="Tarik data terus, tanpa CSV"
+            title="Tarik data terus"
             subtitle="Sambungan baca-sahaja. Token disulitkan sebelum disimpan, dan hanya akaun anda boleh melihatnya."
           />
           <div className="space-y-4 px-5 pb-4">
@@ -99,15 +98,10 @@ export default async function DataPage({
       </section>
 
       <section>
-        <SectionTitle>Muat naik data</SectionTitle>
-        <UploadPanel campaignId={campaignId} />
-      </section>
-
-      <section>
-        <SectionTitle>Log muat naik</SectionTitle>
+        <SectionTitle>Log data</SectionTitle>
         <Card className="overflow-x-auto">
           {batches.length === 0 ? (
-            <p className="px-5 py-6 text-[12px] text-ink-muted">Belum ada muat naik.</p>
+            <p className="px-5 py-6 text-[12px] text-ink-muted">Belum ada data ditarik.</p>
           ) : (
             <table className="w-full min-w-[720px] text-[12px]">
               <thead>
@@ -160,7 +154,7 @@ export default async function DataPage({
         <Card>
           <CardHeader
             title="Snapshot automatik"
-            subtitle="Keadaan data sebelum setiap muat naik. Lima yang terkini dikekalkan bagi setiap jenis."
+            subtitle="Keadaan data sebelum setiap penulisan (sync API atau import). Lima yang terkini dikekalkan bagi setiap jenis."
           />
           <RollbackList campaignId={campaignId} snapshots={snapshots} />
         </Card>

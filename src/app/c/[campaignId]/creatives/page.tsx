@@ -44,7 +44,7 @@ export default async function ReportsPage({
   if (performance.length === 0) {
     return (
       <EmptyState title="Belum ada kreatif">
-        Muat naik eksport Ads Manager di tab <strong>Data</strong> untuk mengisi laporan ini.
+        Sambungkan akaun Meta Ads atau Google Ads di tab <strong>Data</strong> untuk mengisi laporan ini.
       </EmptyState>
     );
   }

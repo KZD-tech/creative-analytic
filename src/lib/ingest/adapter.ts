@@ -45,11 +45,6 @@ export interface NormalizedConversion {
   ad_name_hint: string | null;
 }
 
-export interface NormalizedMediaLink {
-  ad_name: string;
-  media_url: string;
-}
-
 export interface IngestResult<T> {
   items: T[];
   warnings: string[];

@@ -1,22 +1,11 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { parseFbAdsCsv } from '@/lib/ingest/fbAds';
-import { parseConversionsCsv } from '@/lib/ingest/conversions';
-import { parseMediaLinksCsv } from '@/lib/ingest/mediaLinks';
-import {
-  rematchConversions,
-  rollbackBatch,
-  writeAdMetrics,
-  writeConversions,
-  writeMediaLinks,
-  type WriteOutcome,
-} from '@/lib/db/ingest';
+import { rollbackBatch } from '@/lib/db/ingest';
 import { requireUser } from '@/lib/auth/session';
 import {
   addTagToCreatives,
   createCampaign,
-  getCampaign,
   saveBenchmarks,
   setCreativeTags,
   updateCampaign,
@@ -29,8 +18,6 @@ export interface ActionResult {
   message: string;
   warnings?: string[];
 }
-
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 function fail(error: unknown): ActionResult {
   return { ok: false, message: error instanceof Error ? error.message : 'Ralat tidak diketahui' };
@@ -81,74 +68,7 @@ export async function updateCampaignAction(
   }
 }
 
-// ── uploads ─────────────────────────────────────────────────────────────────
-
-export async function uploadCsvAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
-  const campaignId = String(formData.get('campaign_id') ?? '');
-  const kind = String(formData.get('kind') ?? '');
-  const file = formData.get('file');
-
-  if (!campaignId) return { ok: false, message: 'Kempen tidak dinyatakan.' };
-  if (!(file instanceof File) || file.size === 0) return { ok: false, message: 'Sila pilih fail CSV.' };
-  if (file.size > MAX_UPLOAD_BYTES) {
-    return { ok: false, message: `Fail terlalu besar (maksimum ${MAX_UPLOAD_BYTES / 1024 / 1024} MB).` };
-  }
-
-  try {
-    const campaign = await getCampaign(campaignId);
-    if (!campaign) return { ok: false, message: 'Kempen tidak dijumpai.' };
-
-    const text = await file.text();
-    let outcome: WriteOutcome;
-
-    if (kind === 'fb_ads') {
-      const parsed = parseFbAdsCsv(text);
-      if (parsed.items.length === 0) {
-        return { ok: false, message: 'Tiada baris yang boleh dibaca.', warnings: parsed.warnings };
-      }
-      outcome = await writeAdMetrics(campaignId, parsed.items, {
-        source: 'csv',
-        filename: file.name,
-        skipped: parsed.skipped,
-        warnings: parsed.warnings,
-      });
-      // Donations uploaded before their ad existed can be joined up now.
-      const rematched = await rematchConversions(campaignId);
-      if (rematched > 0) outcome.warnings.push(`${rematched} derma lama berjaya dipadankan semula.`);
-    } else if (kind === 'conversions') {
-      const parsed = parseConversionsCsv(text, campaign.timezone);
-      if (parsed.items.length === 0) {
-        return { ok: false, message: 'Tiada baris yang boleh dibaca.', warnings: parsed.warnings };
-      }
-      outcome = await writeConversions(campaignId, parsed.items, {
-        filename: file.name,
-        skipped: parsed.skipped,
-        warnings: parsed.warnings,
-      });
-    } else if (kind === 'media_links') {
-      const parsed = parseMediaLinksCsv(text);
-      if (parsed.items.length === 0) {
-        return { ok: false, message: 'Tiada baris yang boleh dibaca.', warnings: parsed.warnings };
-      }
-      outcome = await writeMediaLinks(campaignId, parsed.items, {
-        filename: file.name,
-        skipped: parsed.skipped,
-        warnings: parsed.warnings,
-      });
-    } else {
-      return { ok: false, message: `Jenis muat naik tidak dikenali: ${kind}` };
-    }
-
-    revalidatePath('/', 'layout');
-    return {
-      ok: true,
-      message: `${outcome.inserted} baris baru, ${outcome.updated} dikemas kini, ${outcome.skipped} dilangkau.`,
-      warnings: outcome.warnings,
-    };
-  } catch (error) {
-    return fail(error);
-  }
-}
+// ── rollback ────────────────────────────────────────────────────────────────
 
 export async function rollbackAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
   const campaignId = String(formData.get('campaign_id') ?? '');

@@ -119,8 +119,7 @@ export default async function CreativeDetailPage({
             </a>
           ) : (
             <p className="text-[11px] text-ink-muted">
-              Tiada pautan video. Muat naik CSV Video Links di tab Data untuk memaparkannya di
-              sini.
+              Tiada pautan video untuk kreatif ini.
             </p>
           )}
 
