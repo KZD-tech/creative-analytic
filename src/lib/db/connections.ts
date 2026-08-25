@@ -1,5 +1,5 @@
 import 'server-only';
-import { db } from './client';
+import { adminDb, db } from './client';
 import { encryptToken, decryptToken } from '@/lib/connections/crypto';
 import type { Platform } from '@/lib/connections/config';
 
@@ -96,13 +96,22 @@ export async function saveConnection(input: {
   return data.id as string;
 }
 
-/** Reads and decrypts the tokens. Keep the result in memory only. */
-export async function readConnectionSecrets(connectionId: string): Promise<{
+/**
+ * Reads and decrypts the tokens. Keep the result in memory only.
+ *
+ * `admin` is for a caller with no user session of its own — the scheduled
+ * sync, running as the service role. The interactive "Segerak sekarang"
+ * button still goes through the signed-in user's own session and RLS.
+ */
+export async function readConnectionSecrets(
+  connectionId: string,
+  admin = false,
+): Promise<{
   connection: AdConnection;
   accessToken: string;
   refreshToken: string | null;
 }> {
-  const supabase = await db();
+  const supabase = admin ? adminDb() : await db();
   const { data, error } = await supabase
     .from('ad_connections')
     .select(`${SAFE}, access_token, refresh_token`)
@@ -127,8 +136,9 @@ export async function updateAccessToken(
   connectionId: string,
   accessToken: string,
   expiresAt: string | null,
+  admin = false,
 ): Promise<void> {
-  const supabase = await db();
+  const supabase = admin ? adminDb() : await db();
   await supabase
     .from('ad_connections')
     .update({
@@ -143,8 +153,9 @@ export async function updateAccessToken(
 export async function recordSync(
   connectionId: string,
   result: { rows: number; error?: string | null; needsReauth?: boolean },
+  admin = false,
 ): Promise<void> {
-  const supabase = await db();
+  const supabase = admin ? adminDb() : await db();
   await supabase
     .from('ad_connections')
     .update({
@@ -193,8 +204,9 @@ export async function unlinkCampaign(sourceId: string): Promise<void> {
 export async function recordCover(
   connectionId: string,
   cover: { from: string; through: string },
+  admin = false,
 ): Promise<void> {
-  const supabase = await db();
+  const supabase = admin ? adminDb() : await db();
   await supabase
     .from('ad_connections')
     .update({ synced_from: cover.from, synced_through: cover.through })

@@ -57,9 +57,16 @@ function windowFor(days: number): { since: string; until: string } {
   return { since: since.toISOString().slice(0, 10), until: until.toISOString().slice(0, 10) };
 }
 
+/**
+ * `admin` is for a caller with no user session of its own — the scheduled
+ * cron sync, running as the service role. The button-triggered sync leaves
+ * it false and keeps going through the signed-in user's own session and RLS,
+ * unchanged from before.
+ */
 export async function syncSource(
   source: CampaignSource,
   days = DEFAULT_LOOKBACK_DAYS,
+  admin = false,
 ): Promise<SyncOutcome> {
   const target = windowFor(days);
   const platform = source.connection.platform;
@@ -74,7 +81,7 @@ export async function syncSource(
   const windows = pendingWindows(target, cover);
 
   if (windows.length === 0) {
-    await recordSync(source.connection_id, { rows: 0 });
+    await recordSync(source.connection_id, { rows: 0 }, admin);
     return { ok: true, message: 'Sudah terkini.', warnings: [], rows: 0, more: false };
   }
 
@@ -83,7 +90,7 @@ export async function syncSource(
   const warnings: string[] = [];
 
   try {
-    const secrets = await readConnectionSecrets(source.connection_id);
+    const secrets = await readConnectionSecrets(source.connection_id, admin);
     let accessToken = secrets.accessToken;
 
     // Google access tokens last an hour, so a scheduled sync is almost always
@@ -96,7 +103,7 @@ export async function syncSource(
         refreshToken: secrets.refreshToken,
       });
       accessToken = refreshed.accessToken;
-      await updateAccessToken(source.connection_id, accessToken, refreshed.expiresAt);
+      await updateAccessToken(source.connection_id, accessToken, refreshed.expiresAt, admin);
     }
 
     for (const window of windows) {
@@ -109,6 +116,7 @@ export async function syncSource(
           filename: null,
           skipped: result.skipped,
           warnings: result.warnings,
+          admin,
         });
         rows += outcome.inserted + outcome.updated;
         warnings.push(...outcome.warnings);
@@ -116,7 +124,7 @@ export async function syncSource(
 
       // Saved per window, so an interrupted run still moves the cursor.
       const extended = extendCover(cover, window);
-      await recordCover(source.connection_id, extended);
+      await recordCover(source.connection_id, extended, admin);
       cover = extended;
       done += 1;
 
@@ -133,7 +141,7 @@ export async function syncSource(
           campaignIds: source.platform_campaign_ids,
           deadline: overallDeadline,
         });
-        const applied = await applyCreativeAssets(source.campaign_id, assets);
+        const applied = await applyCreativeAssets(source.campaign_id, assets, admin);
         if (applied === 0 && assets.length > 0) {
           warnings.push('Aset kreatif ditarik tetapi tiada yang sepadan dengan iklan tersimpan.');
         }
@@ -148,7 +156,7 @@ export async function syncSource(
       }
     }
 
-    await recordSync(source.connection_id, { rows });
+    await recordSync(source.connection_id, { rows }, admin);
 
     const more = done < windows.length;
     return {
@@ -162,11 +170,11 @@ export async function syncSource(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Penyegerakan gagal.';
-    await recordSync(source.connection_id, {
-      rows,
-      error: message,
-      needsReauth: needsReauth(error),
-    });
+    await recordSync(
+      source.connection_id,
+      { rows, error: message, needsReauth: needsReauth(error) },
+      admin,
+    );
     // Whatever landed before the failure is still real, and still recorded.
     return { ok: false, message, warnings, rows, more: true };
   }

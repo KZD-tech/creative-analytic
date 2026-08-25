@@ -45,7 +45,9 @@ export async function GET(request: NextRequest) {
   // has nothing to gain from finishing a few seconds sooner.
   for (const source of sources) {
     if (source.connection?.status === 'disabled') continue;
-    const outcome = await syncSource(source);
+    // No signed-in visitor is behind a cron firing, so this runs as the
+    // service role rather than through a session RLS would reject outright.
+    const outcome = await syncSource(source, undefined, true);
     results.push({
       campaign: source.campaign_id,
       ok: outcome.ok,

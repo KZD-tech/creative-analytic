@@ -277,23 +277,36 @@ const METRIC_COLUMNS = [
 export async function writeAdMetrics(
   campaignId: string,
   items: NormalizedAdMetric[],
-  opts: { source: MetricSource; filename: string | null; skipped: number; warnings: string[] },
+  opts: {
+    source: MetricSource;
+    filename: string | null;
+    skipped: number;
+    warnings: string[];
+    /** Set by a caller with no user session of its own — the scheduled sync,
+     * running as the service role rather than a signed-in visitor. */
+    admin?: boolean;
+  },
 ): Promise<WriteOutcome> {
-  const supabase = await (await db());
+  const admin = opts.admin ?? false;
+  const supabase = admin ? adminDb() : await db();
   const warnings = [...opts.warnings];
 
-  const before = await readAll<Record<string, unknown>>('ad_metrics', METRIC_COLUMNS, campaignId, {
-    source: opts.source,
-  });
+  const before = await readAll<Record<string, unknown>>(
+    'ad_metrics',
+    METRIC_COLUMNS,
+    campaignId,
+    { source: opts.source },
+    admin,
+  );
   const kind = opts.source === 'csv' ? 'fb_ads' : opts.source;
-  const batchId = await openBatch(campaignId, kind, opts.source, opts.filename, before);
+  const batchId = await openBatch(campaignId, kind, opts.source, opts.filename, before, admin);
 
   if (before.length > MAX_SNAPSHOT_ROWS) {
     warnings.push('Data terlalu besar untuk snapshot — rollback tidak tersedia untuk muat naik ini.');
   }
 
   try {
-    const index = await ensureCreatives(campaignId, items);
+    const index = await ensureCreatives(campaignId, items, admin);
     const existing = new Set(
       before.map((r) => `${r.creative_id}|${r.date_start}|${r.date_stop}`),
     );
@@ -347,7 +360,7 @@ export async function writeAdMetrics(
       if (error) throw new Error(`Gagal simpan metrik: ${error.message}`);
     }
 
-    await refreshCreativeDates(campaignId);
+    await refreshCreativeDates(campaignId, admin);
 
     const outcome: WriteOutcome = {
       batchId,
@@ -359,34 +372,42 @@ export async function writeAdMetrics(
       snapshotRows: before.length <= MAX_SNAPSHOT_ROWS ? before.length : 0,
     };
 
-    await closeBatch(batchId, {
-      row_count: outcome.rowCount,
-      inserted_count: outcome.inserted,
-      updated_count: outcome.updated,
-      skipped_count: outcome.skipped,
-      status: outcome.skipped > 0 ? 'partial' : 'ok',
-      message: `${outcome.inserted} baris baru, ${outcome.updated} dikemas kini`,
-      warnings,
-    });
+    await closeBatch(
+      batchId,
+      {
+        row_count: outcome.rowCount,
+        inserted_count: outcome.inserted,
+        updated_count: outcome.updated,
+        skipped_count: outcome.skipped,
+        status: outcome.skipped > 0 ? 'partial' : 'ok',
+        message: `${outcome.inserted} baris baru, ${outcome.updated} dikemas kini`,
+        warnings,
+      },
+      admin,
+    );
 
     return outcome;
   } catch (error) {
-    await closeBatch(batchId, {
-      row_count: items.length,
-      inserted_count: 0,
-      updated_count: 0,
-      skipped_count: items.length,
-      status: 'error',
-      message: error instanceof Error ? error.message : 'Ralat tidak diketahui',
-      warnings,
-    });
+    await closeBatch(
+      batchId,
+      {
+        row_count: items.length,
+        inserted_count: 0,
+        updated_count: 0,
+        skipped_count: items.length,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Ralat tidak diketahui',
+        warnings,
+      },
+      admin,
+    );
     throw error;
   }
 }
 
 /** first_seen / last_seen power the "bila iklan ini hidup" strip on the detail page. */
-async function refreshCreativeDates(campaignId: string) {
-  const supabase = await (await db());
+async function refreshCreativeDates(campaignId: string, admin = false) {
+  const supabase = admin ? adminDb() : await db();
   const { data, error } = await supabase
     .from('ad_metrics')
     .select('creative_id, date_start, date_stop')
@@ -725,11 +746,13 @@ export async function applyCreativeAssets(
     bodyCopy: string | null;
     landingUrl: string | null;
   }[],
+  /** Set by a caller with no user session of its own — the scheduled sync. */
+  admin = false,
 ): Promise<number> {
   if (assets.length === 0) return 0;
 
-  const supabase = await db();
-  const byName = await ensureCreatives(campaignId, assets.map((a) => ({ ad_name: a.adName })));
+  const supabase = admin ? adminDb() : await db();
+  const byName = await ensureCreatives(campaignId, assets.map((a) => ({ ad_name: a.adName })), admin);
   let applied = 0;
 
   for (const part of chunk(assets, 50)) {
