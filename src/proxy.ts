@@ -14,10 +14,14 @@ export const config = {
  * only middleware can write the rotated cookies back to the response.
  */
 export async function proxy(request: NextRequest) {
-  // The machine API carries its own key in a header and has no cookie session.
-  // Redirecting it to /login would answer an agent's POST with a login page and
-  // a 200, which reads as success and silently drops the data.
+  // Machine-called routes carry their own auth (an API key, or CRON_SECRET)
+  // and never have a cookie session — Vercel's own scheduler calls
+  // /api/sync/cron with no browser behind it at all. Redirecting either to
+  // /login would answer a POST or a cron invocation with a login page and a
+  // 200/307, which reads as success while silently dropping the request
+  // before the route's own auth check ever runs.
   if (request.nextUrl.pathname.startsWith('/api/v1/')) return NextResponse.next();
+  if (request.nextUrl.pathname === '/api/sync/cron') return NextResponse.next();
 
   const url = process.env.SUPABASE_URL?.trim();
   const anonKey = process.env.SUPABASE_ANON_KEY?.trim();
