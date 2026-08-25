@@ -5,7 +5,13 @@ import { syncSource } from '@/lib/connections/sync';
 import type { CampaignSource } from '@/lib/db/connections';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// One connection budgets 45s for itself (see BUDGET_MS in lib/connections/sync.ts),
+// and this route works through every connected account sequentially in one
+// call. 60s was enough for one or two accounts; with four now, and more
+// coming, the run outlives it and Vercel drops the connection mid-way,
+// leaving the last account or two to catch up the next night instead of
+// tonight. 300s is the ceiling on Vercel Pro for a Node.js function.
+export const maxDuration = 300;
 
 /**
  * Pulls every connected account on a schedule, so nobody has to sit and wait
