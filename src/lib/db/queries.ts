@@ -274,6 +274,17 @@ export async function upsertTag(
   return data as Tag;
 }
 
+/**
+ * Removes the tag definition itself, not just one assignment — `creative_tags`
+ * rows for it are gone too (ON DELETE CASCADE), so every creative that had it
+ * loses it in the same stroke. RLS is what actually stops this from touching
+ * another account's tag; this is just the delete.
+ */
+export async function deleteTag(tagId: string): Promise<void> {
+  const { error } = await (await db()).from('tags').delete().eq('id', tagId);
+  guard(error);
+}
+
 export async function setCreativeTags(creativeId: string, tagIds: string[]): Promise<void> {
   const supabase = await (await db());
   const { error: deleteError } = await supabase

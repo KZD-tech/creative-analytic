@@ -6,6 +6,7 @@ import { requireUser } from '@/lib/auth/session';
 import {
   addTagToCreatives,
   createCampaign,
+  deleteTag,
   saveBenchmarks,
   setCreativeTags,
   updateCampaign,
@@ -95,6 +96,24 @@ export async function setCreativeTagsAction(_prev: ActionResult | null, formData
     await setCreativeTags(creativeId, tagIds);
     revalidatePath('/', 'layout');
     return { ok: true, message: 'Tag dikemas kini.' };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+/**
+ * Deletes the tag definition itself — every creative carrying it loses it in
+ * the same stroke (ON DELETE CASCADE on creative_tags), not just the one
+ * being edited when this was clicked.
+ */
+export async function deleteTagAction(_prev: ActionResult | null, formData: FormData): Promise<ActionResult> {
+  const tagId = String(formData.get('tag_id') ?? '');
+  if (!tagId) return { ok: false, message: 'Tag tidak dinyatakan.' };
+
+  try {
+    await deleteTag(tagId);
+    revalidatePath('/', 'layout');
+    return { ok: true, message: 'Tag dipadam.' };
   } catch (error) {
     return fail(error);
   }

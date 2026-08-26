@@ -1,7 +1,10 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { setCreativeTagsAction, bulkTagAction, type ActionResult } from '@/app/actions';
+import { X } from 'lucide-react';
+import {
+  bulkTagAction, deleteTagAction, setCreativeTagsAction, type ActionResult,
+} from '@/app/actions';
 import { TAG_DIMENSION_LABELS, type Tag, type TagDimension } from '@/types/db';
 import { Input, Select } from '@/components/ui/Field';
 import { SubmitButton } from '@/components/ui/Button';
@@ -28,6 +31,10 @@ export function TagEditor({
     bulkTagAction,
     null,
   );
+  const [deleteState, deleteAction] = useActionState<ActionResult | null, FormData>(
+    deleteTagAction,
+    null,
+  );
 
   const byDimension = new Map<TagDimension, Tag[]>();
   for (const tag of available) {
@@ -44,12 +51,7 @@ export function TagEditor({
           prestasi mengikut hook, format atau angle.
         </p>
       ) : (
-        <form action={saveAction} className="space-y-2.5">
-          <input type="hidden" name="creative_id" value={creativeId} />
-          {[...selected].map((id) => (
-            <input key={id} type="hidden" name="tag_id" value={id} />
-          ))}
-
+        <div className="space-y-2.5">
           {[...byDimension.entries()].map(([dimension, tags]) => (
             <div key={dimension}>
               <div className="mb-1 text-[10px] font-semibold tracking-wide text-ink-muted uppercase">
@@ -59,40 +61,75 @@ export function TagEditor({
                 {tags.map((tag) => {
                   const on = selected.has(tag.id);
                   return (
-                    <button
-                      key={tag.id}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() =>
-                        setSelected((current) => {
-                          const next = new Set(current);
-                          if (next.has(tag.id)) next.delete(tag.id);
-                          else next.add(tag.id);
-                          return next;
-                        })
-                      }
-                      className={cn(
-                        'rounded-full border px-2.5 py-1 text-[12px] transition-colors',
-                        on
-                          ? 'border-line-strong bg-surface-3 font-medium text-ink'
-                          : 'border-line text-ink-muted hover:text-ink',
-                      )}
-                    >
-                      {tag.label}
-                    </button>
+                    <div key={tag.id} className="group/tag relative inline-flex">
+                      <button
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() =>
+                          setSelected((current) => {
+                            const next = new Set(current);
+                            if (next.has(tag.id)) next.delete(tag.id);
+                            else next.add(tag.id);
+                            return next;
+                          })
+                        }
+                        className={cn(
+                          'rounded-full border px-2.5 py-1 text-[12px] transition-colors',
+                          on
+                            ? 'border-line-strong bg-surface-3 font-medium text-ink'
+                            : 'border-line text-ink-muted hover:text-ink',
+                        )}
+                      >
+                        {tag.label}
+                      </button>
+                      {/* A sibling form, not nested inside the save form below —
+                          deleting the tag definition is a separate action from
+                          toggling it for this one creative, and HTML forms
+                          cannot nest. */}
+                      <form
+                        action={deleteAction}
+                        className="contents"
+                        onSubmit={(event) => {
+                          if (
+                            !confirm(
+                              `Padam tag "${tag.label}"? Ia akan dibuang daripada semua kreatif yang guna tag ini, bukan setakat kreatif ini sahaja.`,
+                            )
+                          ) {
+                            event.preventDefault();
+                          }
+                        }}
+                      >
+                        <input type="hidden" name="tag_id" value={tag.id} />
+                        <button
+                          type="submit"
+                          aria-label={`Padam tag ${tag.label}`}
+                          className="absolute -right-1.5 -top-1.5 hidden size-4 items-center justify-center rounded-full bg-critical text-white transition-opacity group-hover/tag:flex hover:bg-critical/85"
+                        >
+                          <X size={10} strokeWidth={3} />
+                        </button>
+                      </form>
+                    </div>
                   );
                 })}
               </div>
             </div>
           ))}
 
-          <SubmitButton size="sm" pendingLabel="Menyimpan…">
-            Simpan tag
-          </SubmitButton>
-          {saveState ? (
-            <Notice tone={saveState.ok ? 'ok' : 'error'}>{saveState.message}</Notice>
+          <form action={saveAction} className="pt-0.5">
+            <input type="hidden" name="creative_id" value={creativeId} />
+            {[...selected].map((id) => (
+              <input key={id} type="hidden" name="tag_id" value={id} />
+            ))}
+            <SubmitButton size="sm" pendingLabel="Menyimpan…">
+              Simpan tag
+            </SubmitButton>
+          </form>
+
+          {saveState ? <Notice tone={saveState.ok ? 'ok' : 'error'}>{saveState.message}</Notice> : null}
+          {deleteState ? (
+            <Notice tone={deleteState.ok ? 'ok' : 'error'}>{deleteState.message}</Notice>
           ) : null}
-        </form>
+        </div>
       )}
 
       <form action={createAction} className="flex flex-wrap items-end gap-2 border-t border-line pt-3">

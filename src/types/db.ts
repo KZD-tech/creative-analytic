@@ -1,6 +1,7 @@
 export type ConversionSource = 'csv' | 'meta_api' | 'google_ads' | 'manual' | 'api';
 
-export type TagDimension = 'hook' | 'format' | 'angle' | 'offer' | 'persona' | 'cta' | 'custom';
+export type TagDimension =
+  | 'hook' | 'format' | 'angle' | 'offer' | 'persona' | 'cta' | 'campaign' | 'custom';
 
 export const TAG_DIMENSIONS: TagDimension[] = [
   'hook',
@@ -9,6 +10,7 @@ export const TAG_DIMENSIONS: TagDimension[] = [
   'offer',
   'persona',
   'cta',
+  'campaign',
   'custom',
 ];
 
@@ -19,6 +21,7 @@ export const TAG_DIMENSION_LABELS: Record<TagDimension, string> = {
   offer: 'Offer',
   persona: 'Persona',
   cta: 'CTA',
+  campaign: 'Kempen',
   custom: 'Lain-lain',
 };
 
