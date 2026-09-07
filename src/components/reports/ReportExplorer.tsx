@@ -47,6 +47,7 @@ export function ReportExplorer({
   const [sort, setSort] = useState<MetricId>('roas');
   const [status, setStatus] = useState<CreativeStatus | 'all'>('all');
   const [platformCampaign, setPlatformCampaign] = useState<string>('all');
+  const [tagFilter, setTagFilter] = useState<string>('all');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showRule, setShowRule] = useState(false);
@@ -80,6 +81,7 @@ export function ReportExplorer({
     setSort(next.defaultSort);
     setSelected(new Set());
     setPlatformCampaign('all');
+    setTagFilter('all');
     if (id !== 'creatives' && group.startsWith('tag:')) setGroup('none');
   }
 
@@ -96,6 +98,27 @@ export function ReportExplorer({
     return { names: [...names].sort((a, z) => a.localeCompare(z)), hasUntagged };
   }, [built, reportId]);
 
+  // Every tag actually in use on a row currently in this report — a custom
+  // tag ("Rumah Padi") is scoped to whichever creatives someone assigned it
+  // to, unlike platform_campaign which every synced ad already carries.
+  const tagOptions = useMemo(() => {
+    const seen = new Map<string, Tag>();
+    let hasUntagged = false;
+    for (const row of built[reportId]) {
+      const tags = tagsByCreative[row.sampleCreativeId] ?? [];
+      if (tags.length === 0) hasUntagged = true;
+      for (const tag of tags) seen.set(tag.id, tag);
+    }
+    const byDimension = new Map<TagDimension, Tag[]>();
+    for (const tag of seen.values()) {
+      const list = byDimension.get(tag.dimension) ?? [];
+      list.push(tag);
+      byDimension.set(tag.dimension, list);
+    }
+    for (const list of byDimension.values()) list.sort((a, z) => a.label.localeCompare(z.label));
+    return { byDimension, hasUntagged };
+  }, [built, reportId, tagsByCreative]);
+
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     const def = METRICS[sort];
@@ -111,11 +134,19 @@ export function ReportExplorer({
         ) {
           return false;
         }
+        if (tagFilter === 'none' && (tagsByCreative[row.sampleCreativeId] ?? []).length > 0) return false;
+        if (
+          tagFilter !== 'all' &&
+          tagFilter !== 'none' &&
+          !(tagsByCreative[row.sampleCreativeId] ?? []).some((tag) => tag.id === tagFilter)
+        ) {
+          return false;
+        }
         if (needle && !`${row.title} ${row.subtitle ?? ''}`.toLowerCase().includes(needle)) return false;
         return true;
       })
       .sort((a, z) => (def.value(z) ?? -Infinity) - (def.value(a) ?? -Infinity));
-  }, [built, reportId, status, platformCampaign, query, sort]);
+  }, [built, reportId, status, platformCampaign, tagFilter, tagsByCreative, query, sort]);
 
   const rules = useMemo(
     () => highlightRules(visible, metrics, benchmarks),
@@ -187,6 +218,27 @@ export function ReportExplorer({
                 </option>
               ))}
               {platformCampaigns.hasUntagged ? <option value="none">Tiada kempen</option> : null}
+            </Select>
+          ) : null}
+
+          {tagOptions.byDimension.size > 0 ? (
+            <Select
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+              aria-label="Tapis tag"
+              className="w-auto"
+            >
+              <option value="all">Semua tag</option>
+              {[...tagOptions.byDimension.entries()].map(([dimension, tags]) => (
+                <optgroup key={dimension} label={TAG_DIMENSION_LABELS[dimension]}>
+                  {tags.map((tag) => (
+                    <option key={tag.id} value={tag.id}>
+                      {tag.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+              {tagOptions.hasUntagged ? <option value="none">Tiada tag</option> : null}
             </Select>
           ) : null}
 
