@@ -181,10 +181,14 @@ test('a creative listing stops paging once its deadline passes', async () => {
 
 // ── the scheduled pull ──────────────────────────────────────────────────────
 
-test('the cron fires just after midnight in Malaysia, not in UTC', async () => {
-  // Vercel reads cron schedules as UTC. Writing the local hour there would run
-  // the job at 8am Malaysian time — and nothing would look wrong until someone
-  // noticed the day boundary was off.
+test('the cron fires every 2 hours, anchored at the top of the hour', async () => {
+  // A single once-nightly firing used to have to land after the previous day
+  // was complete in Malaysia time. Firing every 2 hours drops that
+  // requirement entirely — pendingWindows()'s overlapDays re-pulls the last 3
+  // days on every call, so an intraday run just refines numbers that are
+  // still moving rather than needing the day to be "done" first. What still
+  // matters is that it targets the right endpoint and actually repeats
+  // through the day instead of firing once.
   const { readFileSync } = await import('node:fs');
   const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
   const [job] = config.crons;
@@ -192,18 +196,14 @@ test('the cron fires just after midnight in Malaysia, not in UTC', async () => {
   assert.equal(job.path, '/api/sync/cron');
 
   const [minute, hour] = job.schedule.split(' ');
-  const utc = new Date(Date.UTC(2026, 7, 23, Number(hour), Number(minute)));
-  const local = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Asia/Kuala_Lumpur',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(utc);
+  assert.equal(minute, '0', 'should fire on the hour, not some arbitrary minute');
+  assert.match(hour, /^\*\/\d+$/, 'should be a "every N hours" step, not a single fixed hour');
 
-  const [localHour] = local.split(':').map(Number);
+  const stepHours = Number(hour.slice(2));
+  const firingsPerDay = 24 / stepHours;
   assert.ok(
-    localHour >= 0 && localHour <= 4,
-    `runs at ${local} Malaysian time — should be shortly after midnight so the previous day is complete`,
+    Number.isInteger(firingsPerDay) && firingsPerDay >= 6,
+    `fires ${firingsPerDay} times a day at a ${stepHours}h step — expected an interval that divides evenly into a day and refreshes at least every 4h`,
   );
 });
 

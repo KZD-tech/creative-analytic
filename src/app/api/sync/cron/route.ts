@@ -9,8 +9,8 @@ export const dynamic = 'force-dynamic';
 // and this route works through every connected account sequentially in one
 // call. 60s was enough for one or two accounts; with four now, and more
 // coming, the run outlives it and Vercel drops the connection mid-way,
-// leaving the last account or two to catch up the next night instead of
-// tonight. 300s is the ceiling on Vercel Pro for a Node.js function.
+// leaving the last account or two to catch up on the next firing instead of
+// this one. 300s is the ceiling on Vercel Pro for a Node.js function.
 export const maxDuration = 300;
 
 /**

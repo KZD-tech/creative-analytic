@@ -320,13 +320,15 @@ bukan Meta. Naikkan `META_LOOKBACK_DAYS` kalau anda perlukan lebih jauh.
 
 ### Berjadual
 
-`vercel.json` mendaftarkan cron harian pada **18:00 UTC — iaitu 2 pagi waktu
-Malaysia**, supaya hari semalam sudah lengkap sebelum ia berjalan.
+`vercel.json` mendaftarkan cron setiap **2 jam** (`0 */2 * * *` — 12 kali
+sehari, dalam UTC tapi itu tidak penting di sini): tiada sesiapa perlu tekan
+"Segerak sekarang" secara manual lagi, nombor terus segar sepanjang hari.
 
-> Cron Vercel dibaca dalam **UTC**. Menulis jam tempatan di situ akan
-> menjalankannya pada 8 pagi waktu Malaysia, dan tiada apa yang kelihatan
-> salah sehingga seseorang perasan sempadan hari tersasar. Ada ujian yang
-> mengunci ini.
+> Cron Vercel dibaca dalam **UTC**, bukan waktu tempatan — tapi sebab larian
+> berulang setiap 2 jam (bukan sekali sehari), ini tak lagi jadi isu sempadan
+> hari macam dulu. `pendingWindows()` sentiasa tarik balik 3 hari terkini
+> (`overlapDays`) pada setiap larian, jadi data hari semasa yang masih
+> berubah-ubah terus dikemas kini — tak perlu tunggu hari tu "siap" dulu.
 
 Ia memerlukan satu env:
 
@@ -338,11 +340,10 @@ Vercel menghantarnya sebagai `Authorization: Bearer …`. Tanpa env itu, endpoin
 menolak semua permintaan — ia berjalan sebagai service role di luar mana-mana
 sesi pengguna, jadi ia gagal tertutup.
 
-> Vercel Hobby hanya membenarkan **satu cron sehari** — cukup untuk keperluan
-> ini. Masa larian pada Hobby juga tidak dijamin tepat dan boleh terpesong
-> sehingga sejam; itu tidak menjadi masalah di sini kerana tarikan sentiasa
-> menyertakan tindanan tiga hari. Pada Pro, `0 */6 * * *` memberi empat kali
-> sehari.
+> **Perlukan Vercel Pro.** Hobby hanya benarkan satu cron sehari — jadual
+> setiap 2 jam ni tak akan berfungsi di situ. Kalau kekal di Hobby, tukar
+> semula `vercel.json` kepada satu larian sehari (contoh `0 18 * * *` = 2
+> pagi waktu Malaysia).
 
 ---
 
