@@ -346,12 +346,60 @@ export async function writeAdMetrics(
 
     if (unmatched > 0) warnings.push(`${unmatched} baris tidak dapat dipadankan dengan kreatif.`);
 
-    let updated = 0;
+    // Two Meta ads with the same name — a duplicated ad, a reused name across
+    // ad sets — resolve to the same creative via adNameKey(), so a sync can
+    // legitimately produce two rows for one (creative_id, date_start,
+    // date_stop): the upsert's own conflict target. Postgres refuses to let
+    // one statement update the same row twice ("ON CONFLICT DO UPDATE command
+    // cannot affect row a second time") and fails the whole chunk, so this has
+    // to be resolved before it reaches the database — by summing, the same
+    // way every other same-named-ad rollup in this app already folds them
+    // into one creative rather than keeping them apart.
+    const merged = new Map<string, (typeof rows)[number]>();
     for (const row of rows) {
+      const key = `${row.creative_id}|${row.date_start}|${row.date_stop}`;
+      const prior = merged.get(key);
+      if (!prior) {
+        merged.set(key, row);
+        continue;
+      }
+      merged.set(key, {
+        ...prior,
+        spend: prior.spend + row.spend,
+        impressions: prior.impressions + row.impressions,
+        // Reach is people, not events — the same person may see both ads, so
+        // it cannot be summed. The larger of the two is the best estimate.
+        reach: Math.max(prior.reach, row.reach),
+        clicks_all: prior.clicks_all + row.clicks_all,
+        link_clicks: prior.link_clicks + row.link_clicks,
+        landing_page_views: prior.landing_page_views + row.landing_page_views,
+        video_3s_views: prior.video_3s_views + row.video_3s_views,
+        video_thruplays: prior.video_thruplays + row.video_thruplays,
+        video_p25: prior.video_p25 + row.video_p25,
+        video_p50: prior.video_p50 + row.video_p50,
+        video_p75: prior.video_p75 + row.video_p75,
+        video_p100: prior.video_p100 + row.video_p100,
+        results: prior.results + row.results,
+        platform_purchases: prior.platform_purchases + row.platform_purchases,
+        platform_revenue: prior.platform_revenue + row.platform_revenue,
+      });
+    }
+    if (merged.size < rows.length) {
+      warnings.push(
+        `${rows.length - merged.size} baris digabung — beberapa iklan berkongsi nama yang sama.`,
+      );
+    }
+    const dedupedRows = [...merged.values()].map((row) => ({
+      ...row,
+      frequency: row.reach > 0 ? row.impressions / row.reach : row.frequency,
+    }));
+
+    let updated = 0;
+    for (const row of dedupedRows) {
       if (existing.has(`${row.creative_id}|${row.date_start}|${row.date_stop}`)) updated += 1;
     }
 
-    for (const part of chunk(rows)) {
+    for (const part of chunk(dedupedRows)) {
       const { error } = await supabase
         .from('ad_metrics')
         .upsert(part, { onConflict: 'creative_id,date_start,date_stop,source' });
@@ -363,7 +411,7 @@ export async function writeAdMetrics(
     const outcome: WriteOutcome = {
       batchId,
       rowCount: items.length,
-      inserted: rows.length - updated,
+      inserted: dedupedRows.length - updated,
       updated,
       skipped: opts.skipped + unmatched,
       warnings,
