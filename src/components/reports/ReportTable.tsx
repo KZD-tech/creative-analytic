@@ -88,6 +88,9 @@ export function ReportTable({
                 {row.subtitle ? (
                   <span className="block truncate text-[11px] text-ink-muted">{row.subtitle}</span>
                 ) : null}
+                {row.platform_campaign ? (
+                  <span className="block truncate text-[10.5px] text-ink-3">{row.platform_campaign}</span>
+                ) : null}
               </td>
               <td className="px-3 py-2 text-right whitespace-nowrap text-ink-2">
                 {STATUS_LABELS[row.status]}

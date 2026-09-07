@@ -46,6 +46,7 @@ export function ReportExplorer({
   const [metrics, setMetrics] = useState<MetricId[]>(DEFAULT_METRICS);
   const [sort, setSort] = useState<MetricId>('roas');
   const [status, setStatus] = useState<CreativeStatus | 'all'>('all');
+  const [platformCampaign, setPlatformCampaign] = useState<string>('all');
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showRule, setShowRule] = useState(false);
@@ -78,8 +79,22 @@ export function ReportExplorer({
     setMetrics(next.defaultMetrics);
     setSort(next.defaultSort);
     setSelected(new Set());
+    setPlatformCampaign('all');
     if (id !== 'creatives' && group.startsWith('tag:')) setGroup('none');
   }
+
+  // Meta's own campaign name on each row — "Ikhlas Ramadan", "Awareness Q3" —
+  // distinct from a report-row's own title/subtitle, and from the workspace
+  // itself (a workspace is one ad account; one account runs many campaigns).
+  const platformCampaigns = useMemo(() => {
+    const names = new Set<string>();
+    let hasUntagged = false;
+    for (const row of built[reportId]) {
+      if (row.platform_campaign) names.add(row.platform_campaign);
+      else hasUntagged = true;
+    }
+    return { names: [...names].sort((a, z) => a.localeCompare(z)), hasUntagged };
+  }, [built, reportId]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -88,11 +103,19 @@ export function ReportExplorer({
     return built[reportId]
       .filter((row) => {
         if (status !== 'all' && row.status !== status) return false;
+        if (platformCampaign === 'none' && row.platform_campaign) return false;
+        if (
+          platformCampaign !== 'all' &&
+          platformCampaign !== 'none' &&
+          row.platform_campaign !== platformCampaign
+        ) {
+          return false;
+        }
         if (needle && !`${row.title} ${row.subtitle ?? ''}`.toLowerCase().includes(needle)) return false;
         return true;
       })
       .sort((a, z) => (def.value(z) ?? -Infinity) - (def.value(a) ?? -Infinity));
-  }, [built, reportId, status, query, sort]);
+  }, [built, reportId, status, platformCampaign, query, sort]);
 
   const rules = useMemo(
     () => highlightRules(visible, metrics, benchmarks),
@@ -149,6 +172,23 @@ export function ReportExplorer({
               </option>
             ))}
           </Select>
+
+          {platformCampaigns.names.length > 0 ? (
+            <Select
+              value={platformCampaign}
+              onChange={(event) => setPlatformCampaign(event.target.value)}
+              aria-label="Tapis kempen"
+              className="w-auto"
+            >
+              <option value="all">Semua kempen</option>
+              {platformCampaigns.names.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+              {platformCampaigns.hasUntagged ? <option value="none">Tiada kempen</option> : null}
+            </Select>
+          ) : null}
 
           <div className="relative">
             <Search

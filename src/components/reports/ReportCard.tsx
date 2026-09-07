@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { Megaphone } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { money } from '@/lib/format';
 import { STATUS_LABELS } from '@/lib/metrics/derive';
@@ -98,6 +99,16 @@ export function ReportCard({
         {row.subtitle ? (
           <p className="mt-0.5 truncate text-[11px] text-ink-muted" title={row.subtitle}>
             {row.subtitle}
+          </p>
+        ) : null}
+
+        {row.platform_campaign ? (
+          <p
+            className="mt-1 flex items-center gap-1 truncate text-[10.5px] text-ink-3"
+            title={`Kempen Meta/Google: ${row.platform_campaign}`}
+          >
+            <Megaphone size={10} className="shrink-0" aria-hidden />
+            {row.platform_campaign}
           </p>
         ) : null}
 
