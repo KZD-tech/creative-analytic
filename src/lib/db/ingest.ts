@@ -676,7 +676,7 @@ export async function applyCreativeAssets(
     externalAdId: string;
     adName: string;
     mediaUrl: string | null;
-    mediaKind: 'video' | 'image' | 'none';
+    mediaKind: 'video' | 'youtube' | 'image' | 'none';
     thumbnailUrl: string | null;
     previewUrl: string | null;
     headline: string | null;

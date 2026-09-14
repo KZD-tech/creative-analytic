@@ -1,6 +1,6 @@
 import 'server-only';
 import { fetchMetaCreatives, fetchMetaInsights } from './meta';
-import { fetchGoogleAdsInsights, refreshGoogleToken } from './googleAds';
+import { fetchGoogleAdsCreatives, fetchGoogleAdsInsights, refreshGoogleToken } from './googleAds';
 import { googleAdsConfig } from './config';
 import { needsReauth } from './http';
 import { extendCover, pendingWindows, type Window } from './windows';
@@ -133,14 +133,22 @@ export async function syncSource(
 
     // Once per run, not once per window: creative assets do not change by the
     // day, and the numbers are the part worth spending the budget on.
-    if (platform === 'meta' && rows > 0 && Date.now() < overallDeadline) {
+    if (rows > 0 && Date.now() < overallDeadline) {
       try {
-        const assets = await fetchMetaCreatives({
-          accessToken,
-          accountId: source.connection.external_account_id,
-          campaignIds: source.platform_campaign_ids,
-          deadline: overallDeadline,
-        });
+        const assets = platform === 'meta'
+          ? await fetchMetaCreatives({
+              accessToken,
+              accountId: source.connection.external_account_id,
+              campaignIds: source.platform_campaign_ids,
+              deadline: overallDeadline,
+            })
+          : await fetchGoogleAdsCreatives({
+              accessToken,
+              developerToken: googleAdsConfig().developerToken,
+              customerId: source.connection.external_account_id,
+              loginCustomerId: source.connection.login_customer_id,
+              campaignIds: source.platform_campaign_ids,
+            });
         const applied = await applyCreativeAssets(source.campaign_id, assets, admin);
         if (applied === 0 && assets.length > 0) {
           warnings.push('Aset kreatif ditarik tetapi tiada yang sepadan dengan iklan tersimpan.');

@@ -337,3 +337,164 @@ export async function fetchGoogleAdsInsights(
 
   return { items, warnings, skipped };
 }
+
+// ── creative assets ─────────────────────────────────────────────────────────
+
+/**
+ * Google Ads has no single "creative" object the way Meta does — the playable
+ * asset is only a resource name on the ad (`customers/.../assets/123`) and has
+ * to be resolved with a second query against the `asset` resource. A search
+ * ad (the most common format) carries no image or video at all; that
+ * legitimately renders as no media, same as it does today.
+ */
+export interface GoogleAdsCreativeAsset {
+  externalAdId: string;
+  adName: string;
+  mediaUrl: string | null;
+  mediaKind: 'youtube' | 'image' | 'none';
+  thumbnailUrl: string | null;
+  previewUrl: string | null;
+  headline: string | null;
+  bodyCopy: string | null;
+  landingUrl: string | null;
+}
+
+interface AdAssetData {
+  id?: string;
+  name?: string;
+  finalUrls?: string[];
+  imageAd?: { imageUrl?: string };
+  videoAd?: { video?: { asset?: string } };
+  videoResponsiveAd?: { videos?: { asset?: string }[] };
+  responsiveDisplayAd?: {
+    marketingImages?: { asset?: string }[];
+    headlines?: { text?: string }[];
+    descriptions?: { text?: string }[];
+  };
+}
+
+interface AdAssetRefRow {
+  adGroupAd?: { ad?: AdAssetData };
+}
+
+interface AssetRow {
+  asset?: {
+    resourceName?: string;
+    youtubeVideoAsset?: { youtubeVideoId?: string };
+    imageAsset?: { fullSize?: { url?: string } };
+  };
+}
+
+interface GoogleAdsQueryOptions {
+  accessToken: string;
+  developerToken: string;
+  customerId: string;
+  loginCustomerId?: string | null;
+}
+
+async function searchStream(options: GoogleAdsQueryOptions & { query: string }): Promise<unknown[]> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${options.accessToken}`,
+    'developer-token': options.developerToken,
+    'Content-Type': 'application/json',
+  };
+  if (options.loginCustomerId) headers['login-customer-id'] = options.loginCustomerId;
+
+  const response = await fetchWithTimeout(
+    `${ADS_API}/customers/${options.customerId}/googleAds:searchStream`,
+    { method: 'POST', headers, body: JSON.stringify({ query: options.query }), cache: 'no-store' },
+    'Google Ads',
+  );
+
+  const parsed = await readJson<unknown>(response, 'Google Ads');
+  if (!response.ok) throw adsError(parsed, response.status);
+
+  const batches = Array.isArray(parsed) ? parsed : [parsed];
+  return batches.flatMap((batch) => (batch as { results?: unknown[] }).results ?? []);
+}
+
+function adAssetRefsQuery(campaignIds?: string[]): string {
+  const filter = campaignIds && campaignIds.length > 0
+    ? ` WHERE campaign.id IN (${campaignIds.join(',')})`
+    : '';
+  return `
+    SELECT
+      ad_group_ad.ad.id,
+      ad_group_ad.ad.name,
+      ad_group_ad.ad.final_urls,
+      ad_group_ad.ad.image_ad.image_url,
+      ad_group_ad.ad.video_ad.video.asset,
+      ad_group_ad.ad.video_responsive_ad.videos,
+      ad_group_ad.ad.responsive_display_ad.marketing_images,
+      ad_group_ad.ad.responsive_display_ad.headlines,
+      ad_group_ad.ad.responsive_display_ad.descriptions
+    FROM ad_group_ad${filter}
+  `.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * A video ad and a responsive display ad never share a row, so each ad
+ * contributes at most one asset reference — the video if it has one,
+ * otherwise the first marketing image.
+ */
+function assetRef(ad: AdAssetData | undefined): { video: string | null; image: string | null } {
+  return {
+    video: ad?.videoAd?.video?.asset ?? ad?.videoResponsiveAd?.videos?.[0]?.asset ?? null,
+    image: ad?.responsiveDisplayAd?.marketingImages?.[0]?.asset ?? null,
+  };
+}
+
+export async function fetchGoogleAdsCreatives(
+  options: GoogleAdsQueryOptions & { campaignIds?: string[] },
+): Promise<GoogleAdsCreativeAsset[]> {
+  const rows = (await searchStream({
+    ...options,
+    query: adAssetRefsQuery(options.campaignIds),
+  })) as AdAssetRefRow[];
+
+  const entries = rows
+    .map((row) => ({ ad: row.adGroupAd?.ad, ref: assetRef(row.adGroupAd?.ad) }))
+    .filter((entry): entry is { ad: AdAssetData; ref: ReturnType<typeof assetRef> } => Boolean(entry.ad?.id));
+
+  const assetNames = [
+    ...new Set(entries.flatMap((e) => [e.ref.video, e.ref.image]).filter((v): v is string => Boolean(v))),
+  ];
+
+  const resolved = new Map<string, { youtubeId: string | null; imageUrl: string | null }>();
+  if (assetNames.length > 0) {
+    const quoted = assetNames.map((name) => `'${name}'`).join(',');
+    const assetRows = (await searchStream({
+      ...options,
+      query: `SELECT asset.resource_name, asset.youtube_video_asset.youtube_video_id, `
+        + `asset.image_asset.full_size.url FROM asset WHERE asset.resource_name IN (${quoted})`,
+    })) as AssetRow[];
+
+    for (const row of assetRows) {
+      const name = row.asset?.resourceName;
+      if (!name) continue;
+      resolved.set(name, {
+        youtubeId: row.asset?.youtubeVideoAsset?.youtubeVideoId ?? null,
+        imageUrl: row.asset?.imageAsset?.fullSize?.url ?? null,
+      });
+    }
+  }
+
+  return entries.map(({ ad, ref }) => {
+    const youtubeId = (ref.video ? resolved.get(ref.video) : undefined)?.youtubeId ?? null;
+    const staticImage = ad.imageAd?.imageUrl
+      ?? (ref.image ? resolved.get(ref.image) : undefined)?.imageUrl
+      ?? null;
+
+    return {
+      externalAdId: ad.id as string,
+      adName: ad.name?.trim() || `Ad ${ad.id}`,
+      mediaUrl: youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : staticImage,
+      mediaKind: youtubeId ? 'youtube' : staticImage ? 'image' : 'none',
+      thumbnailUrl: youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : staticImage,
+      previewUrl: null,
+      headline: ad.responsiveDisplayAd?.headlines?.[0]?.text ?? null,
+      bodyCopy: ad.responsiveDisplayAd?.descriptions?.[0]?.text ?? null,
+      landingUrl: ad.finalUrls?.[0] ?? null,
+    };
+  });
+}
