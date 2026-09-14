@@ -362,10 +362,14 @@ export interface GoogleAdsCreativeAsset {
 interface AdAssetData {
   id?: string;
   name?: string;
+  type?: string;
   finalUrls?: string[];
   imageAd?: { imageUrl?: string };
   videoAd?: { video?: { asset?: string } };
   videoResponsiveAd?: { videos?: { asset?: string }[] };
+  // Demand Gen (née Discovery) video ads are their own oneof, distinct from
+  // the classic in-stream/bumper video_ad and video_responsive_ad above.
+  demandGenVideoResponsiveAd?: { videos?: { asset?: string }[] };
   responsiveDisplayAd?: {
     marketingImages?: { asset?: string }[];
     headlines?: { text?: string }[];
@@ -421,10 +425,12 @@ function adAssetRefsQuery(campaignIds?: string[]): string {
     SELECT
       ad_group_ad.ad.id,
       ad_group_ad.ad.name,
+      ad_group_ad.ad.type,
       ad_group_ad.ad.final_urls,
       ad_group_ad.ad.image_ad.image_url,
       ad_group_ad.ad.video_ad.video.asset,
       ad_group_ad.ad.video_responsive_ad.videos,
+      ad_group_ad.ad.demand_gen_video_responsive_ad.videos,
       ad_group_ad.ad.responsive_display_ad.marketing_images,
       ad_group_ad.ad.responsive_display_ad.headlines,
       ad_group_ad.ad.responsive_display_ad.descriptions
@@ -439,14 +445,17 @@ function adAssetRefsQuery(campaignIds?: string[]): string {
  */
 function assetRef(ad: AdAssetData | undefined): { video: string | null; image: string | null } {
   return {
-    video: ad?.videoAd?.video?.asset ?? ad?.videoResponsiveAd?.videos?.[0]?.asset ?? null,
+    video: ad?.videoAd?.video?.asset
+      ?? ad?.videoResponsiveAd?.videos?.[0]?.asset
+      ?? ad?.demandGenVideoResponsiveAd?.videos?.[0]?.asset
+      ?? null,
     image: ad?.responsiveDisplayAd?.marketingImages?.[0]?.asset ?? null,
   };
 }
 
 export async function fetchGoogleAdsCreatives(
   options: GoogleAdsQueryOptions & { campaignIds?: string[] },
-): Promise<GoogleAdsCreativeAsset[]> {
+): Promise<{ items: GoogleAdsCreativeAsset[]; warnings: string[] }> {
   const rows = (await searchStream({
     ...options,
     query: adAssetRefsQuery(options.campaignIds),
@@ -479,17 +488,27 @@ export async function fetchGoogleAdsCreatives(
     }
   }
 
-  return entries.map(({ ad, ref }) => {
+  const unresolvedTypes = new Map<string, number>();
+
+  const items = entries.map(({ ad, ref }) => {
     const youtubeId = (ref.video ? resolved.get(ref.video) : undefined)?.youtubeId ?? null;
     const staticImage = ad.imageAd?.imageUrl
       ?? (ref.image ? resolved.get(ref.image) : undefined)?.imageUrl
       ?? null;
 
+    // A search/text ad legitimately has neither — this only tracks ad types
+    // this function does not yet know how to read an asset from, so the next
+    // one can be added by name instead of guessed at.
+    if (!youtubeId && !staticImage) {
+      const type = ad.type ?? 'TIDAK_DIKETAHUI';
+      unresolvedTypes.set(type, (unresolvedTypes.get(type) ?? 0) + 1);
+    }
+
     return {
       externalAdId: ad.id as string,
       adName: ad.name?.trim() || `Ad ${ad.id}`,
       mediaUrl: youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : staticImage,
-      mediaKind: youtubeId ? 'youtube' : staticImage ? 'image' : 'none',
+      mediaKind: (youtubeId ? 'youtube' : staticImage ? 'image' : 'none') as GoogleAdsCreativeAsset['mediaKind'],
       thumbnailUrl: youtubeId ? `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg` : staticImage,
       previewUrl: null,
       headline: ad.responsiveDisplayAd?.headlines?.[0]?.text ?? null,
@@ -497,4 +516,16 @@ export async function fetchGoogleAdsCreatives(
       landingUrl: ad.finalUrls?.[0] ?? null,
     };
   });
+
+  const warnings: string[] = [];
+  // SEARCH/TEXT ad types are the expected, silent majority of "no media" —
+  // only surface the ones that are worth investigating.
+  const KNOWN_TEXT_ONLY = new Set(['RESPONSIVE_SEARCH_AD', 'TEXT_AD', 'EXPANDED_TEXT_AD', 'CALL_AD']);
+  const worthReporting = [...unresolvedTypes].filter(([type]) => !KNOWN_TEXT_ONLY.has(type));
+  if (worthReporting.length > 0) {
+    const summary = worthReporting.map(([type, count]) => `${type} (${count})`).join(', ');
+    warnings.push(`Jenis iklan tanpa gambar/video yang dikenali sistem: ${summary}.`);
+  }
+
+  return { items, warnings };
 }

@@ -135,20 +135,25 @@ export async function syncSource(
     // day, and the numbers are the part worth spending the budget on.
     if (rows > 0 && Date.now() < overallDeadline) {
       try {
-        const assets = platform === 'meta'
-          ? await fetchMetaCreatives({
-              accessToken,
-              accountId: source.connection.external_account_id,
-              campaignIds: source.platform_campaign_ids,
-              deadline: overallDeadline,
-            })
-          : await fetchGoogleAdsCreatives({
-              accessToken,
-              developerToken: googleAdsConfig().developerToken,
-              customerId: source.connection.external_account_id,
-              loginCustomerId: source.connection.login_customer_id,
-              campaignIds: source.platform_campaign_ids,
-            });
+        let assets;
+        if (platform === 'meta') {
+          assets = await fetchMetaCreatives({
+            accessToken,
+            accountId: source.connection.external_account_id,
+            campaignIds: source.platform_campaign_ids,
+            deadline: overallDeadline,
+          });
+        } else {
+          const result = await fetchGoogleAdsCreatives({
+            accessToken,
+            developerToken: googleAdsConfig().developerToken,
+            customerId: source.connection.external_account_id,
+            loginCustomerId: source.connection.login_customer_id,
+            campaignIds: source.platform_campaign_ids,
+          });
+          assets = result.items;
+          warnings.push(...result.warnings);
+        }
         const applied = await applyCreativeAssets(source.campaign_id, assets, admin);
         if (applied === 0 && assets.length > 0) {
           warnings.push('Aset kreatif ditarik tetapi tiada yang sepadan dengan iklan tersimpan.');

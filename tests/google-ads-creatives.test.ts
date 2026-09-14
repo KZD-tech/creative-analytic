@@ -26,10 +26,25 @@ test('a classic video ad resolves its asset to a YouTube embed', async () => {
     [{ asset: { resourceName: 'customers/1/assets/9', youtubeVideoAsset: { youtubeVideoId: 'abc123' } } }],
   ]);
 
-  const [asset] = await fetchGoogleAdsCreatives(base);
+  const { items: [asset] } = await fetchGoogleAdsCreatives(base);
   assert.equal(asset.mediaKind, 'youtube');
   assert.equal(asset.mediaUrl, 'https://www.youtube.com/watch?v=abc123');
   assert.equal(asset.thumbnailUrl, 'https://i.ytimg.com/vi/abc123/hqdefault.jpg');
+});
+
+test('a Demand Gen video ad resolves its asset the same way a classic video ad does', async () => {
+  stubAds([
+    [{
+      adGroupAd: {
+        ad: { id: '5', name: 'Demand Gen A', demandGenVideoResponsiveAd: { videos: [{ asset: 'customers/1/assets/7' }] } },
+      },
+    }],
+    [{ asset: { resourceName: 'customers/1/assets/7', youtubeVideoAsset: { youtubeVideoId: 'dg777' } } }],
+  ]);
+
+  const { items: [asset] } = await fetchGoogleAdsCreatives(base);
+  assert.equal(asset.mediaKind, 'youtube');
+  assert.equal(asset.mediaUrl, 'https://www.youtube.com/watch?v=dg777');
 });
 
 test('an image ad reads its URL directly, with no second lookup call', async () => {
@@ -37,7 +52,7 @@ test('an image ad reads its URL directly, with no second lookup call', async () 
     [{ adGroupAd: { ad: { id: '2', name: 'Image A', imageAd: { imageUrl: 'https://x.test/a.png' } } } }],
   ]);
 
-  const [asset] = await fetchGoogleAdsCreatives(base);
+  const { items: [asset] } = await fetchGoogleAdsCreatives(base);
   assert.equal(asset.mediaKind, 'image');
   assert.equal(asset.mediaUrl, 'https://x.test/a.png');
   assert.equal(bodies.length, 1, 'no asset to resolve, so no second query');
@@ -61,23 +76,33 @@ test('a responsive display ad resolves its marketing image through the asset loo
     [{ asset: { resourceName: 'customers/1/assets/5', imageAsset: { fullSize: { url: 'https://x.test/b.png' } } } }],
   ]);
 
-  const [asset] = await fetchGoogleAdsCreatives(base);
+  const { items: [asset] } = await fetchGoogleAdsCreatives(base);
   assert.equal(asset.mediaKind, 'image');
   assert.equal(asset.mediaUrl, 'https://x.test/b.png');
   assert.equal(asset.headline, 'Bantu Sekarang');
   assert.equal(asset.bodyCopy, 'Setiap sumbangan bermakna.');
 });
 
-test('a search ad has no media fields and legitimately carries no media', async () => {
+test('a search ad has no media fields and legitimately carries no media, no warning', async () => {
   const bodies = stubAds([
-    [{ adGroupAd: { ad: { id: '4', name: 'Search A', finalUrls: ['https://x.test/lp'] } } }],
+    [{ adGroupAd: { ad: { id: '4', name: 'Search A', type: 'RESPONSIVE_SEARCH_AD', finalUrls: ['https://x.test/lp'] } } }],
   ]);
 
-  const [asset] = await fetchGoogleAdsCreatives(base);
+  const { items: [asset], warnings } = await fetchGoogleAdsCreatives(base);
   assert.equal(asset.mediaKind, 'none');
   assert.equal(asset.mediaUrl, null);
   assert.equal(asset.landingUrl, 'https://x.test/lp');
   assert.equal(bodies.length, 1, 'nothing to resolve');
+  assert.deepEqual(warnings, []);
+});
+
+test('an ad type this function cannot read media from is surfaced as a warning', async () => {
+  stubAds([
+    [{ adGroupAd: { ad: { id: '6', name: 'Mystery A', type: 'DEMAND_GEN_CAROUSEL_AD' } } }],
+  ]);
+
+  const { warnings } = await fetchGoogleAdsCreatives(base);
+  assert.match(warnings[0], /DEMAND_GEN_CAROUSEL_AD \(1\)/);
 });
 
 test('a campaign filter is passed through to the ad query', async () => {
