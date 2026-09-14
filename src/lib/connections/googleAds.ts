@@ -120,9 +120,29 @@ export function customerId(resourceName: string): string {
  */
 function adsError(parsed: unknown, status: number): PlatformError {
   const body = (Array.isArray(parsed) ? parsed[0] : parsed) as
-    | { error?: { message?: string; status?: string } }
+    | {
+        error?: {
+          message?: string;
+          status?: string;
+          details?: { errors?: { message?: string; errorCode?: Record<string, string> }[] }[];
+        };
+      }
     | undefined;
-  return new PlatformError(body?.error?.message ?? `Google Ads API HTTP ${status}`, {
+
+  // The top-level message ("Request contains an invalid argument.") is the
+  // same for every GAQL mistake; the actual field/reason is only in
+  // `details[].errors[]`, one level down.
+  const detail = body?.error?.details
+    ?.flatMap((entry) => entry.errors ?? [])
+    .map((entry) => entry.message ?? Object.values(entry.errorCode ?? {}).join(', '))
+    .filter(Boolean)
+    .join('; ');
+
+  const message = [body?.error?.message ?? `Google Ads API HTTP ${status}`, detail]
+    .filter(Boolean)
+    .join(' — ');
+
+  return new PlatformError(message, {
     status,
     needsReauth: status === 401 || body?.error?.status === 'UNAUTHENTICATED',
   });
