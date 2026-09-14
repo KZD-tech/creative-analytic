@@ -115,7 +115,6 @@ const googleRow = {
     clicks: '260',
     conversions: 4,
     conversionsValue: 480.5,
-    videoViews: '0',
     videoQuartileP25Rate: 0.5,
     videoQuartileP100Rate: 0.1,
   },
@@ -160,6 +159,11 @@ test('GAQL selects one row per ad per day and honours a campaign filter', () => 
 
   const filtered = buildQuery({ since: '2026-03-01', until: '2026-03-31', campaignIds: ['11', '22'] });
   assert.match(filtered, /campaign\.id IN \(11,22\)/);
+});
+
+test('GAQL never selects metrics.video_views: not queryable from ad_group_ad', () => {
+  const query = buildQuery({ since: '2026-03-01', until: '2026-03-31' });
+  assert.ok(!query.includes('metrics.video_views'), 'Google Ads rejects this field for this resource');
 });
 
 test('customer ids are normalised to bare digits', () => {

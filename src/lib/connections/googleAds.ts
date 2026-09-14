@@ -197,7 +197,6 @@ export function buildQuery(input: { since: string; until: string; campaignIds?: 
       metrics.clicks,
       metrics.conversions,
       metrics.conversions_value,
-      metrics.video_views,
       metrics.video_quartile_p25_rate,
       metrics.video_quartile_p50_rate,
       metrics.video_quartile_p75_rate,
@@ -218,7 +217,6 @@ interface GoogleAdsRow {
     clicks?: string | number;
     conversions?: number;
     conversionsValue?: number;
-    videoViews?: string | number;
     videoQuartileP25Rate?: number;
     videoQuartileP50Rate?: number;
     videoQuartileP75Rate?: number;
@@ -263,7 +261,10 @@ export function mapGoogleAdsRow(row: GoogleAdsRow): NormalizedAdMetric | null {
     clicks_all: int(row.metrics?.clicks),
     link_clicks: int(row.metrics?.clicks),
     landing_page_views: 0,
-    video_3s_views: int(row.metrics?.videoViews),
+    // Google Ads has no ad-level equivalent of Meta's 3-second-view metric;
+    // metrics.video_views is only queryable from resources other than
+    // ad_group_ad, which is what this report runs against.
+    video_3s_views: 0,
     video_thruplays: quartile(row.metrics?.videoQuartileP100Rate),
     video_p25: quartile(row.metrics?.videoQuartileP25Rate),
     video_p50: quartile(row.metrics?.videoQuartileP50Rate),
