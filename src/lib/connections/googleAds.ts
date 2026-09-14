@@ -439,18 +439,73 @@ function adAssetRefsQuery(campaignIds?: string[]): string {
 }
 
 /**
- * A video ad and a responsive display ad never share a row, so each ad
- * contributes at most one asset reference — the video if it has one,
- * otherwise the first marketing image.
+ * A responsive/Demand Gen video ad can carry several candidate videos —
+ * Google tests them against each other the same way it tests headline
+ * combinations on a search ad, so there is no single "the" video in the ad
+ * definition itself. `videoCandidates` lists all of them; which one is
+ * actually worth showing is resolved separately, against reported
+ * performance, not by picking array order.
  */
-function assetRef(ad: AdAssetData | undefined): { video: string | null; image: string | null } {
-  return {
-    video: ad?.videoAd?.video?.asset
-      ?? ad?.videoResponsiveAd?.videos?.[0]?.asset
-      ?? ad?.demandGenVideoResponsiveAd?.videos?.[0]?.asset
-      ?? null,
-    image: ad?.responsiveDisplayAd?.marketingImages?.[0]?.asset ?? null,
-  };
+function videoCandidates(ad: AdAssetData | undefined): string[] {
+  if (ad?.videoAd?.video?.asset) return [ad.videoAd.video.asset];
+  const list = ad?.videoResponsiveAd?.videos ?? ad?.demandGenVideoResponsiveAd?.videos ?? [];
+  return list.map((v) => v.asset).filter((a): a is string => Boolean(a));
+}
+
+function imageRef(ad: AdAssetData | undefined): string | null {
+  return ad?.responsiveDisplayAd?.marketingImages?.[0]?.asset ?? null;
+}
+
+interface AssetPerformanceRow {
+  adGroupAd?: { ad?: { id?: string } };
+  adGroupAdAssetView?: { asset?: string; performanceLabel?: string };
+}
+
+const PERFORMANCE_RANK: Record<string, number> = {
+  BEST: 4, GOOD: 3, LEARNING: 2, LOW: 1, PENDING: 0, UNKNOWN: 0, UNRATED: 0,
+};
+
+/**
+ * Which of an ad's candidate videos Google Ads is actually favouring, per ad
+ * id — the same "asset performance label" reporting Ads Manager itself shows
+ * for combinatorial assets. Best-effort: an account or API version where this
+ * view queries differently should not cost the sync its metrics, so a failure
+ * here is swallowed into a warning rather than thrown.
+ */
+async function fetchBestVideoPerAd(
+  options: GoogleAdsQueryOptions,
+  adIds: string[],
+): Promise<{ best: Map<string, string>; warning: string | null }> {
+  if (adIds.length === 0) return { best: new Map(), warning: null };
+
+  try {
+    const quoted = adIds.map((id) => `'${id}'`).join(',');
+    const rows = (await searchStream({
+      ...options,
+      query: `SELECT ad_group_ad_asset_view.asset, ad_group_ad_asset_view.performance_label, `
+        + `ad_group_ad.ad.id FROM ad_group_ad_asset_view `
+        + `WHERE ad_group_ad_asset_view.field_type = 'VIDEO' AND ad_group_ad.ad.id IN (${quoted})`,
+    })) as AssetPerformanceRow[];
+
+    const scored = new Map<string, { asset: string; score: number }>();
+    for (const row of rows) {
+      const adId = row.adGroupAd?.ad?.id;
+      const asset = row.adGroupAdAssetView?.asset;
+      if (!adId || !asset) continue;
+      const score = PERFORMANCE_RANK[row.adGroupAdAssetView?.performanceLabel ?? 'UNKNOWN'] ?? 0;
+      const current = scored.get(adId);
+      if (!current || score > current.score) scored.set(adId, { asset, score });
+    }
+
+    return { best: new Map([...scored].map(([adId, v]) => [adId, v.asset])), warning: null };
+  } catch (error) {
+    return {
+      best: new Map(),
+      warning: `Tak dapat tentukan video terbaik ikut prestasi, guna video pertama sebagai ganti: ${
+        error instanceof Error ? error.message : 'sebab tidak diketahui'
+      }`,
+    };
+  }
 }
 
 export async function fetchGoogleAdsCreatives(
@@ -462,11 +517,26 @@ export async function fetchGoogleAdsCreatives(
   })) as AdAssetRefRow[];
 
   const entries = rows
-    .map((row) => ({ ad: row.adGroupAd?.ad, ref: assetRef(row.adGroupAd?.ad) }))
-    .filter((entry): entry is { ad: AdAssetData; ref: ReturnType<typeof assetRef> } => Boolean(entry.ad?.id));
+    .map((row) => ({
+      ad: row.adGroupAd?.ad,
+      videos: videoCandidates(row.adGroupAd?.ad),
+      image: imageRef(row.adGroupAd?.ad),
+    }))
+    .filter((entry): entry is { ad: AdAssetData; videos: string[]; image: string | null } =>
+      Boolean(entry.ad?.id));
+
+  const multiVideoAdIds = entries
+    .filter((e) => e.videos.length > 1)
+    .map((e) => e.ad.id as string);
+  const { best: bestVideoByAdId, warning: bestVideoWarning } = await fetchBestVideoPerAd(options, multiVideoAdIds);
+
+  const ref = (entry: (typeof entries)[number]): { video: string | null; image: string | null } => ({
+    video: (entry.ad.id ? bestVideoByAdId.get(entry.ad.id) : undefined) ?? entry.videos[0] ?? null,
+    image: entry.image,
+  });
 
   const assetNames = [
-    ...new Set(entries.flatMap((e) => [e.ref.video, e.ref.image]).filter((v): v is string => Boolean(v))),
+    ...new Set(entries.flatMap((e) => [...e.videos, e.image]).filter((v): v is string => Boolean(v))),
   ];
 
   const resolved = new Map<string, { youtubeId: string | null; imageUrl: string | null }>();
@@ -490,10 +560,12 @@ export async function fetchGoogleAdsCreatives(
 
   const unresolvedTypes = new Map<string, number>();
 
-  const items = entries.map(({ ad, ref }) => {
-    const youtubeId = (ref.video ? resolved.get(ref.video) : undefined)?.youtubeId ?? null;
+  const items = entries.map((entry) => {
+    const { ad } = entry;
+    const picked = ref(entry);
+    const youtubeId = (picked.video ? resolved.get(picked.video) : undefined)?.youtubeId ?? null;
     const staticImage = ad.imageAd?.imageUrl
-      ?? (ref.image ? resolved.get(ref.image) : undefined)?.imageUrl
+      ?? (picked.image ? resolved.get(picked.image) : undefined)?.imageUrl
       ?? null;
 
     // A search/text ad legitimately has neither — this only tracks ad types
@@ -518,6 +590,8 @@ export async function fetchGoogleAdsCreatives(
   });
 
   const warnings: string[] = [];
+  if (bestVideoWarning) warnings.push(bestVideoWarning);
+
   // SEARCH/TEXT ad types are the expected, silent majority of "no media" —
   // only surface the ones that are worth investigating.
   const KNOWN_TEXT_ONLY = new Set(['RESPONSIVE_SEARCH_AD', 'TEXT_AD', 'EXPANDED_TEXT_AD', 'CALL_AD']);

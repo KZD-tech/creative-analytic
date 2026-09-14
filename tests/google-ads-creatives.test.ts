@@ -105,6 +105,60 @@ test('an ad type this function cannot read media from is surfaced as a warning',
   assert.match(warnings[0], /DEMAND_GEN_CAROUSEL_AD \(1\)/);
 });
 
+test('an ad with several candidate videos picks the one reported as BEST, not the first listed', async () => {
+  stubAds([
+    [{
+      adGroupAd: {
+        ad: {
+          id: '7',
+          name: 'Video A/B',
+          demandGenVideoResponsiveAd: {
+            videos: [{ asset: 'customers/1/assets/1' }, { asset: 'customers/1/assets/2' }],
+          },
+        },
+      },
+    }],
+    [
+      { adGroupAd: { ad: { id: '7' } }, adGroupAdAssetView: { asset: 'customers/1/assets/1', performanceLabel: 'LOW' } },
+      { adGroupAd: { ad: { id: '7' } }, adGroupAdAssetView: { asset: 'customers/1/assets/2', performanceLabel: 'BEST' } },
+    ],
+    [
+      { asset: { resourceName: 'customers/1/assets/1', youtubeVideoAsset: { youtubeVideoId: 'wrong111' } } },
+      { asset: { resourceName: 'customers/1/assets/2', youtubeVideoAsset: { youtubeVideoId: 'right222' } } },
+    ],
+  ]);
+
+  const { items: [asset] } = await fetchGoogleAdsCreatives(base);
+  assert.equal(asset.mediaUrl, 'https://www.youtube.com/watch?v=right222');
+});
+
+test('when the performance-label lookup itself fails, the first candidate is still used and a warning is raised', async () => {
+  let call = 0;
+  mock.method(globalThis, 'fetch', async () => {
+    call += 1;
+    if (call === 2) return new Response('not json at all', { status: 200 });
+    const rows = call === 1
+      ? [{
+          adGroupAd: {
+            ad: {
+              id: '8',
+              name: 'Video A/B',
+              demandGenVideoResponsiveAd: { videos: [{ asset: 'customers/1/assets/3' }, { asset: 'customers/1/assets/4' }] },
+            },
+          },
+        }]
+      : [{ asset: { resourceName: 'customers/1/assets/3', youtubeVideoAsset: { youtubeVideoId: 'fallback333' } } }];
+    return new Response(JSON.stringify([{ results: rows }]), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+
+  const { items: [asset], warnings } = await fetchGoogleAdsCreatives(base);
+  assert.equal(asset.mediaUrl, 'https://www.youtube.com/watch?v=fallback333');
+  assert.match(warnings[0], /Tak dapat tentukan video terbaik/);
+});
+
 test('a campaign filter is passed through to the ad query', async () => {
   const bodies = stubAds([[]]);
   await fetchGoogleAdsCreatives({ ...base, campaignIds: ['111', '222'] });
