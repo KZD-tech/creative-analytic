@@ -52,8 +52,20 @@ export function dayLabel(iso: string): string {
   return `${day}/${month}`;
 }
 
+/**
+ * Without an explicit zone, `toLocaleString` falls back to wherever the code
+ * happens to run — the viewer's own machine in a client component, but
+ * Vercel's UTC in a server component. The same log row would then show two
+ * different times depending only on which rendered it, both silently wrong
+ * for anyone reading it in Malaysia. Every campaign here runs on Malaysia
+ * time, so that is what a timestamp means regardless of where it renders.
+ */
 export function dateTime(iso: string): string {
-  return new Date(iso).toLocaleString(LOCALE, { dateStyle: 'short', timeStyle: 'short' });
+  return new Date(iso).toLocaleString(LOCALE, {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'Asia/Kuala_Lumpur',
+  });
 }
 
 export function relativeDays(iso: string | null): string {
