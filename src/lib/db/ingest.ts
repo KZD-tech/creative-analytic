@@ -125,6 +125,59 @@ export async function ensureCreatives(
   return loadCreativeIndex(campaignId, admin);
 }
 
+/**
+ * Donations arrive with an ad name an outside agent matched from Onpay, not
+ * from the platform itself — an agent reading a UTM term routinely reports
+ * "Silungai V8H1" for what Google Ads itself simply calls "V8H1", the
+ * campaign shorthand riding along in front. `adNameKey` alone treats those as
+ * two different ads, and every such donation used to found a brand-new
+ * creative with no spend and no media, split forever from the real one.
+ *
+ * This looks for an already-synced creative (one with a real external_ad_id)
+ * whose name appears verbatim inside the hint, and only when exactly one
+ * candidate qualifies — an ambiguous or absent match is left for
+ * `ensureCreatives` to create fresh, rather than guessing which of several
+ * ads a donation belongs to.
+ */
+async function matchBySuffix(
+  campaignId: string,
+  hints: string[],
+  admin = false,
+): Promise<Map<string, string>> {
+  const uniqueHints = [...new Set(hints.map((h) => h.trim()).filter(Boolean))];
+  const result = new Map<string, string>();
+  if (uniqueHints.length === 0) return result;
+
+  const supabase = admin ? adminDb() : await db();
+  const { data, error } = await supabase
+    .from('creatives')
+    .select('id, ad_name')
+    .eq('campaign_id', campaignId)
+    .not('external_ad_id', 'is', null);
+  if (error) throw new Error(`Gagal baca kreatif sedia ada: ${error.message}`);
+
+  // A very short real name (a couple of characters) turns up inside almost
+  // any hint by coincidence — not worth matching on.
+  const synced = (data ?? []).filter((c) => (c.ad_name as string).trim().length >= 3) as {
+    id: string;
+    ad_name: string;
+  }[];
+
+  for (const hint of uniqueHints) {
+    const key = adNameKey(hint);
+    if (!key) continue;
+    // An exact match is ensureCreatives' job; suffix matching only covers
+    // what that would otherwise miss.
+    if (synced.some((c) => adNameKey(c.ad_name) === key)) continue;
+
+    const lowerHint = hint.toLowerCase();
+    const candidates = synced.filter((c) => lowerHint.includes(c.ad_name.toLowerCase()));
+    if (candidates.length === 1) result.set(key, candidates[0].id);
+  }
+
+  return result;
+}
+
 export async function loadCreativeIndex(
   campaignId: string,
   admin = false,
@@ -527,9 +580,21 @@ export async function writeConversions(
 
   try {
     const named = items.filter((i) => i.ad_name_hint);
+
+    // A hint carrying a campaign prefix the platform never stored ("Silungai
+    // V8H1" for an ad Google Ads itself calls "V8H1") must not be allowed to
+    // found a new creative before this has had a chance to find the real one.
+    const suffixMatches = await matchBySuffix(
+      campaignId,
+      named.map((i) => i.ad_name_hint as string),
+      opts.admin,
+    );
+    const stillUnresolved = named.filter(
+      (i) => !suffixMatches.has(adNameKey(i.ad_name_hint as string)),
+    );
     const index = await ensureCreatives(
       campaignId,
-      named.map((i) => ({ ad_name: i.ad_name_hint as string })),
+      stillUnresolved.map((i) => ({ ad_name: i.ad_name_hint as string })),
       opts.admin,
     );
 
@@ -546,7 +611,9 @@ export async function writeConversions(
       if (existingKeys.has(key)) updated += 1;
 
       const hint = item.ad_name_hint;
-      const creativeId = hint ? (index.get(adNameKey(hint)) ?? null) : null;
+      const hintKey = hint ? adNameKey(hint) : null;
+      const suffixMatch = hintKey ? suffixMatches.get(hintKey) : undefined;
+      const creativeId = suffixMatch ?? (hintKey ? (index.get(hintKey) ?? null) : null);
       if (!creativeId) unmatched += 1;
 
       rows.push({
@@ -559,7 +626,7 @@ export async function writeConversions(
         channel: item.channel,
         attribution_raw: item.attribution_raw,
         matched_ad_name: hint,
-        match_method: creativeId ? 'normalized' : 'unmatched',
+        match_method: creativeId ? (suffixMatch ? 'fuzzy' : 'normalized') : 'unmatched',
         source,
         batch_id: batchId,
       });
