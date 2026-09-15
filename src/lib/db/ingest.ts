@@ -178,6 +178,66 @@ async function matchBySuffix(
   return result;
 }
 
+/**
+ * The same ad code can genuinely run on two platforms at once (an agency
+ * pushes "V8H1" on Google Ads and Meta alike for the same drive), and the
+ * agent sending donations sometimes gets the workspace itself wrong, not just
+ * the name — a Google Ads donation landing in a Meta workspace that has never
+ * run an ad by that name. `matchBySuffix` cannot catch this: it only ever
+ * looks inside the campaign it was told. This looks across every other
+ * campaign the same account owns, and only acts where no campaign has
+ * already claimed the name and exactly one ad anywhere in the account
+ * matches — the same one-candidate-only rule, just widened in scope.
+ */
+async function matchAcrossOwnerCampaigns(
+  ownerId: string,
+  excludeCampaignId: string,
+  hints: string[],
+  admin = false,
+): Promise<Map<string, { creativeId: string; campaignId: string }>> {
+  const uniqueHints = [...new Set(hints.map((h) => h.trim()).filter(Boolean))];
+  const result = new Map<string, { creativeId: string; campaignId: string }>();
+  if (uniqueHints.length === 0) return result;
+
+  const supabase = admin ? adminDb() : await db();
+
+  const { data: campaigns, error: campaignsError } = await supabase
+    .from('campaigns')
+    .select('id')
+    .eq('owner_id', ownerId)
+    .neq('id', excludeCampaignId);
+  if (campaignsError) throw new Error(`Gagal baca senarai kempen: ${campaignsError.message}`);
+
+  const otherCampaignIds = (campaigns ?? []).map((c) => c.id as string);
+  if (otherCampaignIds.length === 0) return result;
+
+  const { data, error } = await supabase
+    .from('creatives')
+    .select('id, ad_name, campaign_id')
+    .in('campaign_id', otherCampaignIds)
+    .not('external_ad_id', 'is', null);
+  if (error) throw new Error(`Gagal baca kreatif merentas kempen: ${error.message}`);
+
+  const candidates = (data ?? []).filter((c) => (c.ad_name as string).trim().length >= 3) as {
+    id: string;
+    ad_name: string;
+    campaign_id: string;
+  }[];
+
+  for (const hint of uniqueHints) {
+    const key = adNameKey(hint);
+    if (!key) continue;
+
+    const lowerHint = hint.toLowerCase();
+    const matches = candidates.filter((c) => lowerHint.includes(c.ad_name.toLowerCase()));
+    if (matches.length === 1) {
+      result.set(key, { creativeId: matches[0].id, campaignId: matches[0].campaign_id });
+    }
+  }
+
+  return result;
+}
+
 export async function loadCreativeIndex(
   campaignId: string,
   admin = false,
@@ -563,6 +623,14 @@ export async function writeConversions(
     source?: ConversionSource;
     /** Uses the admin client, for callers that have no user session. */
     admin?: boolean;
+    /**
+     * Enables matching a donation to a different one of this account's
+     * campaigns when the named campaign has no match for it — set only for
+     * the agent API, where the caller's own routing (not just its ad-name
+     * guess) is the thing most likely to be wrong. A CSV upload already names
+     * the one campaign it belongs to; there is nothing to cross-check it against.
+     */
+    ownerId?: string;
   },
 ): Promise<WriteOutcome> {
   const source = opts.source ?? 'csv';
@@ -592,17 +660,40 @@ export async function writeConversions(
     const stillUnresolved = named.filter(
       (i) => !suffixMatches.has(adNameKey(i.ad_name_hint as string)),
     );
+
+    // Only once the campaign named actually has nothing does this look
+    // elsewhere in the account — the same ad code can run on two platforms at
+    // once, so a match here means the caller sent the right name to the
+    // wrong workspace, not that the name is ambiguous.
+    const crossMatches = opts.ownerId
+      ? await matchAcrossOwnerCampaigns(
+          opts.ownerId,
+          campaignId,
+          stillUnresolved.map((i) => i.ad_name_hint as string),
+          opts.admin,
+        )
+      : new Map<string, { creativeId: string; campaignId: string }>();
+    const stillUnmatched = stillUnresolved.filter(
+      (i) => !crossMatches.has(adNameKey(i.ad_name_hint as string)),
+    );
+
     const index = await ensureCreatives(
       campaignId,
-      stillUnresolved.map((i) => ({ ad_name: i.ad_name_hint as string })),
+      stillUnmatched.map((i) => ({ ad_name: i.ad_name_hint as string })),
       opts.admin,
     );
 
     const existingKeys = new Set(before.map((r) => String(r.dedupe_key)));
     const seen = new Set<string>();
     const rows = [];
+    // Redirected to a different campaign than the one named — kept apart
+    // from `rows` because each one may need its own campaign_id on the
+    // upsert's conflict target, and does not belong to this campaign's
+    // rollback batch.
+    const redirected = [];
     let updated = 0;
     let unmatched = 0;
+    const misrouted = new Set<string>();
 
     for (const item of items) {
       const key = dedupeKey(item);
@@ -613,6 +704,27 @@ export async function writeConversions(
       const hint = item.ad_name_hint;
       const hintKey = hint ? adNameKey(hint) : null;
       const suffixMatch = hintKey ? suffixMatches.get(hintKey) : undefined;
+      const crossMatch = !suffixMatch && hintKey ? crossMatches.get(hintKey) : undefined;
+
+      if (crossMatch) {
+        misrouted.add(crossMatch.campaignId);
+        redirected.push({
+          campaign_id: crossMatch.campaignId,
+          creative_id: crossMatch.creativeId,
+          external_id: item.external_id,
+          dedupe_key: key,
+          occurred_at: item.occurred_at,
+          amount: item.amount,
+          channel: item.channel,
+          attribution_raw: item.attribution_raw,
+          matched_ad_name: hint,
+          match_method: 'fuzzy',
+          source,
+          batch_id: null,
+        });
+        continue;
+      }
+
       const creativeId = suffixMatch ?? (hintKey ? (index.get(hintKey) ?? null) : null);
       if (!creativeId) unmatched += 1;
 
@@ -639,6 +751,20 @@ export async function writeConversions(
       if (error) throw new Error(`Gagal simpan derma: ${error.message}`);
     }
 
+    for (const part of chunk(redirected)) {
+      const { error } = await supabase
+        .from('conversions')
+        .upsert(part, { onConflict: 'campaign_id,source,dedupe_key' });
+      if (error) throw new Error(`Gagal simpan derma yang disalurkan semula: ${error.message}`);
+    }
+
+    if (misrouted.size > 0) {
+      warnings.push(
+        `${redirected.length} derma dihantar ke kempen ${campaignId} tetapi sebenarnya milik ` +
+          `${[...misrouted].join(', ')} — disalurkan semula secara automatik.`,
+      );
+    }
+
     if (unmatched > 0) {
       warnings.push(
         `${unmatched} derma tidak dapat dipadankan dengan kreatif — ia dikira di peringkat kempen sahaja.`,
@@ -648,7 +774,7 @@ export async function writeConversions(
     const outcome: WriteOutcome = {
       batchId,
       rowCount: items.length,
-      inserted: rows.length - updated,
+      inserted: rows.length + redirected.length - updated,
       updated,
       skipped: opts.skipped,
       warnings,

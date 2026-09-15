@@ -83,6 +83,7 @@ export async function POST(request: Request) {
       warnings: [],
       source: 'api',
       admin: true,
+      ownerId: auth.caller.ownerId,
     });
 
     return ok({
