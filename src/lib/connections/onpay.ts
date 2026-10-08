@@ -52,6 +52,7 @@ export interface OnpaySale {
   total_amount: string;
   confirmed_at: string | null;
   created_at: string;
+  invoice_number: string;
   extra_field_1: string;
   extra_field_2: string;
   extra_field_3: string;
@@ -89,6 +90,10 @@ export interface OnpayDonation {
   channel: string | null;
   attributionRaw: string | null;
   adNameHint: string | null;
+  /** `"GYT-AIRBERSIHGAZA347557"` — the prefix before the first `-` is which
+   *  form the donor actually paid through, a stronger signal of platform
+   *  family than the ad code alone. */
+  invoiceNumber: string | null;
 }
 
 /**
@@ -121,5 +126,6 @@ export function mapOnpaySale(sale: OnpaySale): OnpayDonation | null {
     channel: sale.extra_field_2?.trim() || null,
     attributionRaw: sale.extra_field_3?.trim() || null,
     adNameHint: segments.length > 0 ? segments[segments.length - 1] : null,
+    invoiceNumber: sale.invoice_number?.trim() || null,
   };
 }

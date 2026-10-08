@@ -179,44 +179,26 @@ async function matchBySuffix(
 }
 
 /**
- * The same ad code can genuinely run on two platforms at once (an agency
- * pushes "V8H1" on Google Ads and Meta alike for the same drive), and the
- * agent sending donations sometimes gets the workspace itself wrong, not just
- * the name — a Google Ads donation landing in a Meta workspace that has never
- * run an ad by that name. `matchBySuffix` cannot catch this: it only ever
- * looks inside the campaign it was told. This looks across every other
- * campaign the same account owns, and only acts where no campaign has
- * already claimed the name and exactly one ad anywhere in the account
- * matches — the same one-candidate-only rule, just widened in scope.
- *
- * `excludeCampaignId` is omitted entirely for a caller with no "home"
- * campaign to begin with — Onpay's own sync, where every donation has to be
- * routed from scratch rather than rescued as a fallback.
+ * The one-candidate-only matching core, scoped to an explicit list of
+ * campaigns — shared by `matchAcrossOwnerCampaigns` (every other campaign the
+ * owner has) and Onpay's form-prefix routing (only the campaigns that share
+ * the donation's own form family).
  */
-export async function matchAcrossOwnerCampaigns(
-  ownerId: string,
-  excludeCampaignId: string | null,
+export async function matchWithinCampaigns(
+  campaignIds: string[],
   hints: string[],
   admin = false,
 ): Promise<Map<string, { creativeId: string; campaignId: string }>> {
   const uniqueHints = [...new Set(hints.map((h) => h.trim()).filter(Boolean))];
   const result = new Map<string, { creativeId: string; campaignId: string }>();
-  if (uniqueHints.length === 0) return result;
+  if (uniqueHints.length === 0 || campaignIds.length === 0) return result;
 
   const supabase = admin ? adminDb() : await db();
-
-  let campaignsQuery = supabase.from('campaigns').select('id').eq('owner_id', ownerId);
-  if (excludeCampaignId) campaignsQuery = campaignsQuery.neq('id', excludeCampaignId);
-  const { data: campaigns, error: campaignsError } = await campaignsQuery;
-  if (campaignsError) throw new Error(`Gagal baca senarai kempen: ${campaignsError.message}`);
-
-  const otherCampaignIds = (campaigns ?? []).map((c) => c.id as string);
-  if (otherCampaignIds.length === 0) return result;
 
   const { data, error } = await supabase
     .from('creatives')
     .select('id, ad_name, campaign_id')
-    .in('campaign_id', otherCampaignIds)
+    .in('campaign_id', campaignIds)
     .not('external_ad_id', 'is', null);
   if (error) throw new Error(`Gagal baca kreatif merentas kempen: ${error.message}`);
 
@@ -238,6 +220,37 @@ export async function matchAcrossOwnerCampaigns(
   }
 
   return result;
+}
+
+/**
+ * The same ad code can genuinely run on two platforms at once (an agency
+ * pushes "V8H1" on Google Ads and Meta alike for the same drive), and the
+ * agent sending donations sometimes gets the workspace itself wrong, not just
+ * the name — a Google Ads donation landing in a Meta workspace that has never
+ * run an ad by that name. `matchBySuffix` cannot catch this: it only ever
+ * looks inside the campaign it was told. This looks across every other
+ * campaign the same account owns, and only acts where no campaign has
+ * already claimed the name and exactly one ad anywhere in the account
+ * matches — the same one-candidate-only rule, just widened in scope.
+ *
+ * `excludeCampaignId` is omitted entirely for a caller with no "home"
+ * campaign to begin with — Onpay's own sync, where every donation has to be
+ * routed from scratch rather than rescued as a fallback.
+ */
+export async function matchAcrossOwnerCampaigns(
+  ownerId: string,
+  excludeCampaignId: string | null,
+  hints: string[],
+  admin = false,
+): Promise<Map<string, { creativeId: string; campaignId: string }>> {
+  const supabase = admin ? adminDb() : await db();
+
+  let campaignsQuery = supabase.from('campaigns').select('id').eq('owner_id', ownerId);
+  if (excludeCampaignId) campaignsQuery = campaignsQuery.neq('id', excludeCampaignId);
+  const { data: campaigns, error: campaignsError } = await campaignsQuery;
+  if (campaignsError) throw new Error(`Gagal baca senarai kempen: ${campaignsError.message}`);
+
+  return matchWithinCampaigns((campaigns ?? []).map((c) => c.id as string), hints, admin);
 }
 
 export async function loadCreativeIndex(
@@ -815,15 +828,26 @@ export interface OnpayDonationInput {
   channel: string | null;
   attributionRaw: string | null;
   adNameHint: string | null;
+  invoiceNumber: string | null;
 }
 
 /**
  * Onpay has no campaign of its own to write a donation against — every sale
  * has to be routed purely by matching its ad code to a creative already
- * synced from Meta or Google Ads, anywhere in the account. Unmatched sales
- * are never guessed into a workspace or given a placeholder creative (that
- * was the whole shape of the bug this replaced); they are simply left out
- * and counted, so the gap stays visible instead of silently wrong.
+ * synced from Meta or Google Ads. Unmatched sales are never guessed into a
+ * workspace or given a placeholder creative (that was the whole shape of the
+ * bug this replaced); they are simply left out and counted, so the gap stays
+ * visible instead of silently wrong.
+ *
+ * The same ad code can legitimately run on two platforms at once, which the
+ * code alone cannot disambiguate. Where a campaign has an
+ * `onpay_form_prefix` set (the invoice-number prefix of the Onpay form that
+ * platform's traffic actually pays through — "GYT" for a Google Ads
+ * workspace, "FB" for a Meta one), a donation whose own invoice carries that
+ * prefix is matched ONLY within the campaigns sharing it — not the whole
+ * account. A donation whose prefix matches no configured campaign (or has no
+ * invoice number) still falls back to matching across the whole account, the
+ * original behaviour, so a client without a prefix set yet keeps working.
  */
 export async function writeOnpayConversions(
   ownerId: string,
@@ -832,45 +856,76 @@ export async function writeOnpayConversions(
 ): Promise<{ written: number; unmatched: number; warnings: string[] }> {
   const supabase = admin ? adminDb() : await db();
 
+  const { data: campaignRows, error: campaignError } = await supabase
+    .from('campaigns')
+    .select('id, onpay_form_prefix')
+    .eq('owner_id', ownerId)
+    .not('onpay_form_prefix', 'is', null);
+  if (campaignError) throw new Error(`Gagal baca prefix borang kempen: ${campaignError.message}`);
+
+  const campaignsByPrefix = new Map<string, string[]>();
+  for (const row of (campaignRows ?? []) as { id: string; onpay_form_prefix: string }[]) {
+    const prefix = row.onpay_form_prefix.toUpperCase();
+    const list = campaignsByPrefix.get(prefix) ?? [];
+    list.push(row.id);
+    campaignsByPrefix.set(prefix, list);
+  }
+
+  function prefixFor(invoiceNumber: string | null): string | null {
+    if (!invoiceNumber) return null;
+    const upper = invoiceNumber.toUpperCase();
+    for (const prefix of campaignsByPrefix.keys()) {
+      if (upper.startsWith(prefix)) return prefix;
+    }
+    return null;
+  }
+
   const named = items.filter((i) => i.adNameHint);
-  const matches = await matchAcrossOwnerCampaigns(
-    ownerId,
-    null,
-    named.map((i) => i.adNameHint as string),
-    admin,
-  );
+  const byPrefix = new Map<string | null, OnpayDonationInput[]>();
+  for (const item of named) {
+    const prefix = prefixFor(item.invoiceNumber);
+    const list = byPrefix.get(prefix) ?? [];
+    list.push(item);
+    byPrefix.set(prefix, list);
+  }
 
   const rowsByCampaign = new Map<string, Record<string, unknown>[]>();
   const unmatchedNames = new Map<string, number>();
   let unmatched = 0;
 
-  for (const item of items) {
-    const key = item.adNameHint ? adNameKey(item.adNameHint) : null;
-    const match = key ? matches.get(key) : undefined;
+  for (const [prefix, groupItems] of byPrefix) {
+    const matches = prefix
+      ? await matchWithinCampaigns(campaignsByPrefix.get(prefix) ?? [], groupItems.map((i) => i.adNameHint as string), admin)
+      : await matchAcrossOwnerCampaigns(ownerId, null, groupItems.map((i) => i.adNameHint as string), admin);
 
-    if (!match) {
-      unmatched += 1;
-      const name = item.adNameHint ?? '(tiada kod iklan)';
-      unmatchedNames.set(name, (unmatchedNames.get(name) ?? 0) + 1);
-      continue;
+    for (const item of groupItems) {
+      const key = item.adNameHint ? adNameKey(item.adNameHint) : null;
+      const match = key ? matches.get(key) : undefined;
+
+      if (!match) {
+        unmatched += 1;
+        const name = item.adNameHint ?? '(tiada kod iklan)';
+        unmatchedNames.set(name, (unmatchedNames.get(name) ?? 0) + 1);
+        continue;
+      }
+
+      const list = rowsByCampaign.get(match.campaignId) ?? [];
+      list.push({
+        campaign_id: match.campaignId,
+        creative_id: match.creativeId,
+        external_id: item.externalId,
+        dedupe_key: item.externalId,
+        occurred_at: item.occurredAt,
+        amount: item.amount,
+        channel: item.channel,
+        attribution_raw: item.attributionRaw,
+        matched_ad_name: item.adNameHint,
+        match_method: 'fuzzy',
+        source: 'api',
+        batch_id: null,
+      });
+      rowsByCampaign.set(match.campaignId, list);
     }
-
-    const list = rowsByCampaign.get(match.campaignId) ?? [];
-    list.push({
-      campaign_id: match.campaignId,
-      creative_id: match.creativeId,
-      external_id: item.externalId,
-      dedupe_key: item.externalId,
-      occurred_at: item.occurredAt,
-      amount: item.amount,
-      channel: item.channel,
-      attribution_raw: item.attributionRaw,
-      matched_ad_name: item.adNameHint,
-      match_method: 'fuzzy',
-      source: 'api',
-      batch_id: null,
-    });
-    rowsByCampaign.set(match.campaignId, list);
   }
 
   let written = 0;

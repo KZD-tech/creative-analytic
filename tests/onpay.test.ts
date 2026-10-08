@@ -10,6 +10,7 @@ const baseSale: OnpaySale = {
   total_amount: '50.00',
   confirmed_at: '2026-10-08T20:20:01+08:00',
   created_at: '2026-10-08T20:17:26+08:00',
+  invoice_number: 'GYT-AIRBERSIHGAZA347557',
   extra_field_1: '',
   extra_field_2: 'youtube (Returning)',
   extra_field_3: 'W4L |  | tankgaza V3H1',
@@ -24,6 +25,7 @@ test('a confirmed donation maps with the ad code taken from the last pipe segmen
   assert.equal(donation.channel, 'youtube (Returning)');
   assert.equal(donation.attributionRaw, 'W4L |  | tankgaza V3H1');
   assert.equal(donation.adNameHint, 'tankgaza V3H1');
+  assert.equal(donation.invoiceNumber, 'GYT-AIRBERSIHGAZA347557');
 });
 
 test('a sale that is not type "donation" is dropped — this account also sells ordinary products', () => {
