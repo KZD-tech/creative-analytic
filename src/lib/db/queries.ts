@@ -1,4 +1,5 @@
 import 'server-only';
+import { cache } from 'react';
 import { db, isSchemaNotExposed } from './client';
 import { withDefaults } from '@/lib/metrics/benchmarks';
 import type {
@@ -38,7 +39,12 @@ export interface DateWindow {
 
 // ── campaigns ───────────────────────────────────────────────────────────────
 
-export async function listCampaigns(): Promise<Campaign[]> {
+/**
+ * Wrapped in React's cache() — the layout and every nested page each ask for
+ * the same campaign/list on one navigation, and without this every one of
+ * them was a separate round trip to Supabase for the same row.
+ */
+export const listCampaigns = cache(async (): Promise<Campaign[]> => {
   const { data, error } = await (await db())
     .from('campaigns')
     .select('*')
@@ -46,13 +52,13 @@ export async function listCampaigns(): Promise<Campaign[]> {
     .order('created_at', { ascending: false });
   guard(error);
   return (data ?? []) as Campaign[];
-}
+});
 
-export async function getCampaign(id: string): Promise<Campaign | null> {
+export const getCampaign = cache(async (id: string): Promise<Campaign | null> => {
   const { data, error } = await (await db()).from('campaigns').select('*').eq('id', id).maybeSingle();
   guard(error);
   return (data as Campaign | null) ?? null;
-}
+});
 
 export async function createCampaign(input: {
   id: string;

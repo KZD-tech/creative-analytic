@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import {
   Bar, BarChart, CartesianGrid, Cell, ReferenceLine,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -29,10 +30,14 @@ export function ReportChart({
   currency: string;
 }) {
   const def = METRICS[metric];
-  const data = rows
-    .map((row) => ({ row, value: def.value(row) }))
-    .filter((entry): entry is { row: ReportRow; value: number } => entry.value !== null)
-    .slice(0, 25);
+  const data = useMemo(
+    () =>
+      rows
+        .map((row) => ({ row, value: def.value(row) }))
+        .filter((entry): entry is { row: ReportRow; value: number } => entry.value !== null)
+        .slice(0, 25),
+    [rows, def],
+  );
 
   if (data.length === 0) {
     return (

@@ -31,13 +31,14 @@ export function InsightsBoard({
     [items, tagsByCreative, dimension],
   );
 
-  const best = rows.filter((row) => row.key !== '__untagged__' && row.roas !== null);
-  const top = best[0]
-    ? [...best].sort((a, z) => (z.roas ?? 0) - (a.roas ?? 0))[0]
-    : null;
-  const worst = best[0]
-    ? [...best].sort((a, z) => (a.roas ?? 0) - (z.roas ?? 0))[0]
-    : null;
+  const { top, worst } = useMemo(() => {
+    const best = rows.filter((row) => row.key !== '__untagged__' && row.roas !== null);
+    if (!best[0]) return { top: null, worst: null };
+    return {
+      top: [...best].sort((a, z) => (z.roas ?? 0) - (a.roas ?? 0))[0],
+      worst: [...best].sort((a, z) => (a.roas ?? 0) - (z.roas ?? 0))[0],
+    };
+  }, [rows]);
 
   return (
     <div className="space-y-4">

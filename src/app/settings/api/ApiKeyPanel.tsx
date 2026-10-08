@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useState } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { Check, Copy, KeyRound, Trash2 } from 'lucide-react';
 import { createKeyAction, revokeKeyAction, type KeyResult } from './actions';
 import type { ApiKeyRow } from '@/lib/db/apiKeys';
@@ -62,11 +62,16 @@ export function CreateKeyForm({ campaigns }: { campaigns: { id: string; name: st
 function RevealedKey({ value }: { value: string }) {
   const [copied, setCopied] = useState(false);
 
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
   async function copy() {
     try {
       await navigator.clipboard.writeText(value);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     } catch {
       // Clipboard access can be refused; the key is on screen either way.
       setCopied(false);

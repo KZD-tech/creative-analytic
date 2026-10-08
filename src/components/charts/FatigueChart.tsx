@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import {
   CartesianGrid,
   Line,
@@ -29,22 +30,24 @@ import type { CreativeDailyRow } from '@/types/db';
  * crossover point be moved by scale choice alone.
  */
 export function FatigueChart({ rows }: { rows: CreativeDailyRow[] }) {
-  const withData = rows.filter((row) => row.impressions > 0);
+  const data = useMemo(() => {
+    const withData = rows.filter((row) => row.impressions > 0);
 
-  const baseFrequency = withData.find((row) => (row.frequency ?? 0) > 0)?.frequency ?? null;
-  const first = withData[0];
-  const baseCtr = first && first.impressions > 0 ? first.link_clicks / first.impressions : null;
+    const baseFrequency = withData.find((row) => (row.frequency ?? 0) > 0)?.frequency ?? null;
+    const first = withData[0];
+    const baseCtr = first && first.impressions > 0 ? first.link_clicks / first.impressions : null;
 
-  const data = withData.map((row) => {
-    const ctr = row.impressions > 0 ? row.link_clicks / row.impressions : null;
-    return {
-      day: row.day,
-      rawFrequency: row.frequency,
-      rawCtr: ctr,
-      frequency: baseFrequency && row.frequency ? (row.frequency / baseFrequency) * 100 : null,
-      ctr: baseCtr && ctr ? (ctr / baseCtr) * 100 : null,
-    };
-  });
+    return withData.map((row) => {
+      const ctr = row.impressions > 0 ? row.link_clicks / row.impressions : null;
+      return {
+        day: row.day,
+        rawFrequency: row.frequency,
+        rawCtr: ctr,
+        frequency: baseFrequency && row.frequency ? (row.frequency / baseFrequency) * 100 : null,
+        ctr: baseCtr && ctr ? (ctr / baseCtr) * 100 : null,
+      };
+    });
+  }, [rows]);
 
   // Only announce a series the chart actually draws — a Meta export without a
   // frequency column would otherwise show a legend entry with no line.
@@ -56,7 +59,7 @@ export function FatigueChart({ rows }: { rows: CreativeDailyRow[] }) {
     legend.push({ label: 'CTR (indeks)', color: SERIES[0] });
   }
 
-  if (data.length < 2 || (!baseFrequency && !baseCtr)) {
+  if (data.length < 2 || legend.length === 0) {
     return (
       <ChartFrame title="Keletihan kreatif" subtitle="Perlu sekurang-kurangnya dua hari data harian.">
         <div className="grid h-full place-items-center text-[12px] text-ink-muted">

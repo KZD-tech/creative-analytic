@@ -1,5 +1,3 @@
-'use client';
-
 import Link from 'next/link';
 import { FolderCog, KeyRound, LogOut, Users } from 'lucide-react';
 import { signOutAction } from '@/app/login/actions';

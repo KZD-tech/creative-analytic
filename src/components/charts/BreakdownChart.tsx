@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import {
   Bar,
   BarChart,
@@ -39,9 +40,10 @@ export function BreakdownChart({
   target: number;
   dimensionLabel: string;
 }) {
-  const data = rows
-    .filter((row) => row.spend > 0)
-    .map((row) => ({ ...row, roasValue: row.roas ?? 0 }));
+  const data = useMemo(
+    () => rows.filter((row) => row.spend > 0).map((row) => ({ ...row, roasValue: row.roas ?? 0 })),
+    [rows],
+  );
 
   if (data.length === 0) {
     return (
