@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { cn } from '@/lib/cn';
+import { dayLabel } from '@/lib/format';
 import { STATUS_LABELS } from '@/lib/metrics/derive';
 import {
   METRICS, isHighlighted, isUnreliable, type HighlightRule, type MetricId,
@@ -40,6 +41,9 @@ export function ReportTable({
             </th>
             <th scope="col" className="px-3 py-2 text-right font-medium whitespace-nowrap text-ink-muted">
               Status
+            </th>
+            <th scope="col" className="px-3 py-2 text-right font-medium whitespace-nowrap text-ink-muted">
+              Mula run
             </th>
             {metrics.map((id) => (
               <th
@@ -94,6 +98,12 @@ export function ReportTable({
               </td>
               <td className="px-3 py-2 text-right whitespace-nowrap text-ink-2">
                 {STATUS_LABELS[row.status]}
+              </td>
+              <td
+                className="px-3 py-2 text-right whitespace-nowrap text-ink-2"
+                title={row.first_seen ? `Mula ada data belanja/impresi pada ${row.first_seen}` : undefined}
+              >
+                {row.first_seen ? dayLabel(row.first_seen) : '—'}
               </td>
               {metrics.map((id) => {
                 const metric = METRICS[id];

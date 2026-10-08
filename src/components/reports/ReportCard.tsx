@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Megaphone } from 'lucide-react';
 import { cn } from '@/lib/cn';
-import { money } from '@/lib/format';
+import { dayLabel, money } from '@/lib/format';
 import { STATUS_LABELS } from '@/lib/metrics/derive';
 import {
   METRICS, isHighlighted, isUnreliable, type HighlightRule, type MetricId,
@@ -109,6 +109,15 @@ export function ReportCard({
           >
             <Megaphone size={10} className="shrink-0" aria-hidden />
             {row.platform_campaign}
+          </p>
+        ) : null}
+
+        {row.first_seen ? (
+          <p
+            className="mt-0.5 truncate text-[10.5px] text-ink-3"
+            title={`Mula ada data belanja/impresi pada ${row.first_seen}`}
+          >
+            Mula run {dayLabel(row.first_seen)}
           </p>
         ) : null}
 

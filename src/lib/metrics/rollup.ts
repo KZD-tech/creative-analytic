@@ -32,8 +32,12 @@ function foldRows(members: PerformanceRow[], benchmarks: Benchmarks): CreativeMe
   const head = members[0];
   const totals = { ...ZERO_SUMS };
   let maxReach = 0;
+  let firstSeen = head.first_seen;
+  let lastSeen = head.last_seen;
 
   for (const row of members) {
+    if (row.first_seen && (!firstSeen || row.first_seen < firstSeen)) firstSeen = row.first_seen;
+    if (row.last_seen && (!lastSeen || row.last_seen > lastSeen)) lastSeen = row.last_seen;
     totals.spend += row.spend;
     totals.impressions += row.impressions;
     totals.clicks_all += row.clicks_all;
@@ -56,7 +60,14 @@ function foldRows(members: PerformanceRow[], benchmarks: Benchmarks): CreativeMe
   // Reach cannot be summed across ads — the same person may see several — so
   // the best available figure is the largest single reach in the group.
   return deriveCreative(
-    { ...head, ...totals, reach: maxReach, frequency: maxReach > 0 ? totals.impressions / maxReach : null },
+    {
+      ...head,
+      ...totals,
+      reach: maxReach,
+      frequency: maxReach > 0 ? totals.impressions / maxReach : null,
+      first_seen: firstSeen,
+      last_seen: lastSeen,
+    },
     benchmarks,
   );
 }
