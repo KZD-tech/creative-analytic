@@ -65,7 +65,13 @@ export default async function DataPage({
   if (!loaded.data) return null;
 
   const { batches, snapshots, benchmarks, connections, sources } = loaded.data;
-  const statuses = [platformStatus('meta'), platformStatus('google_ads')];
+  // OAuth exists for many people each connecting their own account. A single
+  // team with a direct token already configured has no use for it — showing
+  // it anyway is a button that invites a confusing, redundant connection.
+  const statuses = [
+    systemUserConfig().token === '' ? platformStatus('meta') : null,
+    googleAdsDirectConfig().refreshToken === '' ? platformStatus('google_ads') : null,
+  ].filter((status) => status !== null);
   const connectOk = typeof query.connect_ok === 'string' ? query.connect_ok : undefined;
   const connectError = typeof query.connect_error === 'string' ? query.connect_error : undefined;
   const onpayConnection = connections.find((connection) => connection.platform === 'onpay') ?? null;
