@@ -186,17 +186,20 @@ belanja ini mendarat. Tukar dengan `META_PREVIEW_FORMAT` kalau perlu.
 ### Hasil dan derma datang dari Onpay, bukan Meta
 
 KPI **Hasil** dan **Derma** dikira daripada jadual `conversions`, yang diisi
-oleh muat naik CSV Onpay — bukan daripada Meta.
+oleh sambungan Onpay — bukan daripada Meta atau Google Ads.
 
-Ini disengajakan. Derma berlaku di Onpay, jadi pixel Meta tidak nampak
-kebanyakannya, dan angka yang dilaporkan Meta selalunya tidak sepadan dengan
-apa yang benar-benar masuk ke akaun bank. Onpay ialah kebenarannya.
+Ini disengajakan. Derma berlaku di Onpay, jadi pixel Meta/Google tidak nampak
+kebanyakannya, dan angka yang dilaporkan platform iklan selalunya tidak
+sepadan dengan apa yang benar-benar masuk ke akaun bank. Onpay ialah
+kebenarannya.
 
-Nombor Meta sendiri tetap disimpan (`platform_purchases`, `platform_revenue`)
-untuk perbandingan, tetapi tidak digunakan sebagai Hasil.
+Nombor platform sendiri tetap disimpan (`platform_purchases`,
+`platform_revenue`) untuk perbandingan, tetapi tidak digunakan sebagai Hasil.
 
-Jadi: **selepas menyambung Meta, ROAS akan kekal 0.00x sehingga CSV Onpay
-dimuat naik.** Belanja, funnel dan kreatif berfungsi tanpanya; wang tidak.
+Jadi: **selepas menyambung Meta/Google Ads sahaja, ROAS akan kekal 0.00x
+sehingga Onpay turut disambung.** Belanja, funnel dan kreatif berfungsi
+tanpanya; wang tidak. Lihat bahagian **Onpay** di bawah untuk sambung sumber
+derma.
 
 ---
 
@@ -281,6 +284,59 @@ sudah dikendalikan:
 - **Kuartil video ialah kadar, bukan bilangan.**
   `video_quartile_p25_rate: 0.62` bermaksud 62% daripada impressions, bukan 62
   tontonan. Didarab dengan impressions supaya sepadan dengan bentuk Meta.
+
+---
+
+## Onpay — derma, seluruh akaun sekali gus
+
+Onpay berbeza daripada Meta/Google Ads dalam satu perkara asas: **tiada
+konsep workspace**. Satu senarai jualan untuk seluruh akaun Onpay, tiada
+parameter untuk "bagi saya derma kempen ini sahaja". Jadi sambungan Onpay
+disambung **sekali untuk seluruh akaun**, bukan satu-satu per kempen — dan
+setiap derma disalurkan secara automatik ke workspace yang kod iklannya
+padan, dikira semula setiap kali sync berjalan.
+
+### 1. Dapatkan token
+
+Log masuk akaun Onpay → **Tetapan → Sistem → API & Webhook** → aktifkan
+fungsi API → salin token.
+
+### 2. Env
+
+```
+ONPAY_ACCOUNT=<subdomain akaun, cth: ihsanmadani>
+ONPAY_TOKEN=<token yang dijana>
+```
+
+Satu butang — **Guna token Onpay** — akan muncul pada tab Data mana-mana
+kempen (sambungan ni bukan milik satu kempen). Menekannya menyimpan token
+secara disulitkan dan mengaktifkan sync berjadual.
+
+### Bagaimana derma dipadankan ke iklan
+
+Setiap jualan Onpay bawa medan `extra_field_3` — rentetan dipisah `|` yang
+landing page isi, segmen terakhir ialah kod iklan (cth.
+`"W4L |  | tankgaza V3H1"` → `tankgaza V3H1`). Kod ni selalunya ada prefix
+kempen yang platform iklan sendiri tidak simpan, jadi sistem cuba padan
+**akhiran** nama tu terhadap setiap kreatif yang sudah disync dari Meta/Google
+Ads, merentas **semua** workspace akaun — bukan hanya satu.
+
+Padanan cuma diguna pakai bila **tepat satu** kreatif di seluruh akaun yang
+sepadan. Kalau tiada padanan atau mengelirukan (lebih daripada satu calon),
+derma tu **tidak** diteka ke mana-mana workspace — ia dikira sebagai "tiada
+padanan" dalam amaran sync, bukan dicipta sebagai kreatif hantu.
+
+Hanya jualan dengan `type: "donation"` dan `confirmed_at` terisi dikira
+(akaun Onpay boleh jual produk lain juga, dan jualan belum disahkan belum
+tentu jadi duit).
+
+### Berapa jauh ke belakang
+
+`sales.list` Onpay tiada penapis julat tarikh — hanya pagination disusun
+terbaru dahulu. Setiap sync mengimbas semula tetingkap bergolek 30 hari
+terkini (`ONPAY_LOOKBACK_DAYS`, boleh ditimpa), menulis semula atas data sedia
+ada — tidak memudaratkan, sebab setiap derma dikenal pasti melalui ID sale
+Onpay sendiri.
 
 ---
 

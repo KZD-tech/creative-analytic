@@ -188,10 +188,14 @@ async function matchBySuffix(
  * campaign the same account owns, and only acts where no campaign has
  * already claimed the name and exactly one ad anywhere in the account
  * matches — the same one-candidate-only rule, just widened in scope.
+ *
+ * `excludeCampaignId` is omitted entirely for a caller with no "home"
+ * campaign to begin with — Onpay's own sync, where every donation has to be
+ * routed from scratch rather than rescued as a fallback.
  */
-async function matchAcrossOwnerCampaigns(
+export async function matchAcrossOwnerCampaigns(
   ownerId: string,
-  excludeCampaignId: string,
+  excludeCampaignId: string | null,
   hints: string[],
   admin = false,
 ): Promise<Map<string, { creativeId: string; campaignId: string }>> {
@@ -201,11 +205,9 @@ async function matchAcrossOwnerCampaigns(
 
   const supabase = admin ? adminDb() : await db();
 
-  const { data: campaigns, error: campaignsError } = await supabase
-    .from('campaigns')
-    .select('id')
-    .eq('owner_id', ownerId)
-    .neq('id', excludeCampaignId);
+  let campaignsQuery = supabase.from('campaigns').select('id').eq('owner_id', ownerId);
+  if (excludeCampaignId) campaignsQuery = campaignsQuery.neq('id', excludeCampaignId);
+  const { data: campaigns, error: campaignsError } = await campaignsQuery;
   if (campaignsError) throw new Error(`Gagal baca senarai kempen: ${campaignsError.message}`);
 
   const otherCampaignIds = (campaigns ?? []).map((c) => c.id as string);
@@ -804,6 +806,94 @@ export async function writeConversions(
     }, opts.admin);
     throw error;
   }
+}
+
+export interface OnpayDonationInput {
+  externalId: string;
+  occurredAt: string;
+  amount: number;
+  channel: string | null;
+  attributionRaw: string | null;
+  adNameHint: string | null;
+}
+
+/**
+ * Onpay has no campaign of its own to write a donation against — every sale
+ * has to be routed purely by matching its ad code to a creative already
+ * synced from Meta or Google Ads, anywhere in the account. Unmatched sales
+ * are never guessed into a workspace or given a placeholder creative (that
+ * was the whole shape of the bug this replaced); they are simply left out
+ * and counted, so the gap stays visible instead of silently wrong.
+ */
+export async function writeOnpayConversions(
+  ownerId: string,
+  items: OnpayDonationInput[],
+  admin = false,
+): Promise<{ written: number; unmatched: number; warnings: string[] }> {
+  const supabase = admin ? adminDb() : await db();
+
+  const named = items.filter((i) => i.adNameHint);
+  const matches = await matchAcrossOwnerCampaigns(
+    ownerId,
+    null,
+    named.map((i) => i.adNameHint as string),
+    admin,
+  );
+
+  const rowsByCampaign = new Map<string, Record<string, unknown>[]>();
+  const unmatchedNames = new Map<string, number>();
+  let unmatched = 0;
+
+  for (const item of items) {
+    const key = item.adNameHint ? adNameKey(item.adNameHint) : null;
+    const match = key ? matches.get(key) : undefined;
+
+    if (!match) {
+      unmatched += 1;
+      const name = item.adNameHint ?? '(tiada kod iklan)';
+      unmatchedNames.set(name, (unmatchedNames.get(name) ?? 0) + 1);
+      continue;
+    }
+
+    const list = rowsByCampaign.get(match.campaignId) ?? [];
+    list.push({
+      campaign_id: match.campaignId,
+      creative_id: match.creativeId,
+      external_id: item.externalId,
+      dedupe_key: item.externalId,
+      occurred_at: item.occurredAt,
+      amount: item.amount,
+      channel: item.channel,
+      attribution_raw: item.attributionRaw,
+      matched_ad_name: item.adNameHint,
+      match_method: 'fuzzy',
+      source: 'api',
+      batch_id: null,
+    });
+    rowsByCampaign.set(match.campaignId, list);
+  }
+
+  let written = 0;
+  for (const rows of rowsByCampaign.values()) {
+    for (const part of chunk(rows)) {
+      const { error } = await supabase
+        .from('conversions')
+        .upsert(part, { onConflict: 'campaign_id,source,dedupe_key' });
+      if (error) throw new Error(`Gagal simpan derma Onpay: ${error.message}`);
+      written += part.length;
+    }
+  }
+
+  const warnings: string[] = [];
+  if (unmatched > 0) {
+    const sample = [...unmatchedNames]
+      .slice(0, 5)
+      .map(([name, count]) => `${name} (${count})`)
+      .join(', ');
+    warnings.push(`${unmatched} derma Onpay tiada padanan iklan — contoh: ${sample}.`);
+  }
+
+  return { written, unmatched, warnings };
 }
 
 // ── rollback ────────────────────────────────────────────────────────────────

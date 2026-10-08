@@ -3,8 +3,9 @@
 import { useActionState } from 'react';
 import { KeyRound, Link2, PlugZap, RefreshCw, Unlink } from 'lucide-react';
 import {
-  disconnectAction, importGoogleAdsDirectAction, importSystemUserAction, linkConnectionAction,
-  syncCampaignAction, unlinkConnectionAction, type ConnectionResult,
+  disconnectAction, importGoogleAdsDirectAction, importOnpayAction, importSystemUserAction,
+  linkConnectionAction, syncCampaignAction, syncOnpayAction, unlinkConnectionAction,
+  type ConnectionResult,
 } from '@/app/connections-actions';
 import type { AdConnection, CampaignSource } from '@/lib/db/connections';
 import type { PlatformStatus } from '@/lib/connections/config';
@@ -14,7 +15,7 @@ import { Notice } from '@/components/ui/Notice';
 import { Badge } from '@/components/ui/primitives';
 import { dateTime, relativeDays } from '@/lib/format';
 
-const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta Ads', google_ads: 'Google Ads' };
+const PLATFORM_LABEL: Record<string, string> = { meta: 'Meta Ads', google_ads: 'Google Ads', onpay: 'Onpay' };
 
 export function ConnectButtons({
   campaignId,
@@ -115,6 +116,60 @@ export function ImportGoogleAdsDirectButton({ campaignId }: { campaignId: string
   );
 }
 
+export function ImportOnpayButton() {
+  const [state, action] = useActionState<ConnectionResult | null, FormData>(
+    importOnpayAction,
+    null,
+  );
+
+  return (
+    <div className="w-full">
+      <form action={action} className="flex items-center gap-2">
+        <SubmitButton variant="secondary">
+          <KeyRound size={14} /> Guna token Onpay
+        </SubmitButton>
+        <span className="text-[12px] text-ink-3">
+          Token API Onpay — satu sambungan untuk seluruh akaun, derma disalurkan automatik ikut iklan.
+        </span>
+      </form>
+      {state && (
+        <div className="mt-2">
+          <Notice tone={state.ok ? 'ok' : 'error'}>{state.message}</Notice>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function SyncOnpayButton() {
+  const [state, action] = useActionState<ConnectionResult | null, FormData>(syncOnpayAction, null);
+
+  return (
+    <div>
+      <form action={action}>
+        <SubmitButton variant="secondary" pendingLabel="Menarik derma…">
+          <RefreshCw size={13} /> Segerak Onpay sekarang
+        </SubmitButton>
+      </form>
+
+      {state ? (
+        <div className="mt-3 space-y-2">
+          <Notice tone={state.ok ? 'ok' : 'error'}>{state.message}</Notice>
+          {state.warnings && state.warnings.length > 0 ? (
+            <Notice tone="warning" title="Amaran">
+              <ul className="list-inside list-disc space-y-0.5">
+                {[...new Set(state.warnings)].map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </Notice>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function SyncButton({ campaignId }: { campaignId: string }) {
   const [state, action] = useActionState<ConnectionResult | null, FormData>(syncCampaignAction, null);
 
@@ -159,7 +214,12 @@ export function LinkedSources({
   const [dropState, drop] = useActionState<ConnectionResult | null, FormData>(disconnectAction, null);
 
   const linkedIds = new Set(sources.map((source) => source.connection_id));
-  const available = connections.filter((connection) => !linkedIds.has(connection.id));
+  // Onpay is never campaign-scoped — it has no per-workspace linking step to
+  // offer here, only the account-wide connect/sync buttons elsewhere on this
+  // page.
+  const available = connections.filter(
+    (connection) => connection.platform !== 'onpay' && !linkedIds.has(connection.id),
+  );
 
   return (
     <div className="space-y-4">
@@ -259,7 +319,11 @@ export function ConnectFeedback({ ok, error }: { ok?: string; error?: string }) 
 }
 
 export function LastSyncLine({ connections }: { connections: AdConnection[] }) {
+  // Onpay syncs the whole account, not this workspace — mixing its timestamp
+  // in here would read as "this workspace's ad data was just pulled" when it
+  // was really donations, possibly for a different campaign entirely.
   const latest = connections
+    .filter((connection) => connection.platform !== 'onpay')
     .map((connection) => connection.last_sync_at)
     .filter((value): value is string => Boolean(value))
     .sort()

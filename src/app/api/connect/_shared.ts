@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { randomBytes } from 'node:crypto';
 import { requireUser } from '@/lib/auth/session';
-import { callbackUrl, platformStatus, signState, type Platform } from '@/lib/connections/config';
+import { callbackUrl, platformStatus, signState } from '@/lib/connections/config';
 
 /** Sends the browser back to the campaign's Data tab with a message to show. */
 export function backToData(
@@ -16,7 +16,7 @@ export function backToData(
 
 export async function beginOAuth(
   request: Request,
-  platform: Platform,
+  platform: 'meta' | 'google_ads',
   buildUrl: (input: { redirectUri: string; state: string }) => string,
 ): Promise<NextResponse> {
   const user = await requireUser();

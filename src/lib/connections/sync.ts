@@ -1,13 +1,15 @@
 import 'server-only';
 import { fetchMetaCreatives, fetchMetaInsights } from './meta';
 import { fetchGoogleAdsCreatives, fetchGoogleAdsInsights, refreshGoogleToken } from './googleAds';
-import { googleAdsConfig } from './config';
+import { fetchOnpaySalesPage, mapOnpaySale } from './onpay';
+import { googleAdsConfig, onpayConfig } from './config';
 import { needsReauth } from './http';
 import { extendCover, pendingWindows, type Window } from './windows';
 import {
-  readConnectionSecrets, recordCover, recordSync, updateAccessToken, type CampaignSource,
+  readConnectionSecrets, recordCover, recordSync, updateAccessToken, type AdConnection,
+  type CampaignSource,
 } from '@/lib/db/connections';
-import { applyCreativeAssets, writeAdMetrics } from '@/lib/db/ingest';
+import { applyCreativeAssets, writeAdMetrics, writeOnpayConversions } from '@/lib/db/ingest';
 import type { IngestResult, NormalizedAdMetric } from '@/lib/ingest/adapter';
 
 export interface SyncOutcome {
@@ -218,4 +220,81 @@ function fetchWindow(
     until: window.until,
     campaignIds: source.platform_campaign_ids,
   });
+}
+
+/**
+ * How far back each Onpay run re-walks. Not a resume cursor like Meta/Google's
+ * date windows — Onpay's `sales.list` has no date filter at all, only
+ * pagination sorted newest-first — so every run simply re-reads this whole
+ * rolling window and upserts over it. Harmless: a sale already written just
+ * gets the same values again, and this is generous enough to catch a
+ * donation confirmed days after it was first attempted.
+ */
+export const ONPAY_LOOKBACK_DAYS = Number(process.env.ONPAY_LOOKBACK_DAYS) || 30;
+
+const ONPAY_PAGE_SIZE = 100;
+
+/**
+ * Onpay has no `campaign_sources` row and no single workspace to sync into —
+ * `writeOnpayConversions` routes each donation on its own, by matching the ad
+ * code against every creative the account owns. This only ever runs from the
+ * one account-wide connection, never once per campaign.
+ */
+export async function syncOnpay(connection: AdConnection, admin = false): Promise<SyncOutcome> {
+  const deadline = Date.now() + BUDGET_MS;
+  const cutoff = Date.now() - ONPAY_LOOKBACK_DAYS * 86_400_000;
+
+  try {
+    const secrets = await readConnectionSecrets(connection.id, admin);
+    const config = onpayConfig();
+    if (!config.account) throw new Error('ONPAY_ACCOUNT belum diisi.');
+
+    const donations: ReturnType<typeof mapOnpaySale>[] = [];
+
+    for (let page = 1; ; page += 1) {
+      if (Date.now() >= deadline) break;
+
+      const { sales, recordCount } = await fetchOnpaySalesPage({
+        account: config.account,
+        token: secrets.accessToken,
+        page,
+        perPage: ONPAY_PAGE_SIZE,
+      });
+      if (sales.length === 0) break;
+
+      for (const sale of sales) donations.push(mapOnpaySale(sale));
+
+      const oldest = sales[sales.length - 1];
+      const reachedCutoff = new Date(oldest.created_at).getTime() < cutoff;
+      const reachedEnd = page * ONPAY_PAGE_SIZE >= recordCount;
+      if (reachedCutoff || reachedEnd) break;
+    }
+
+    const mapped = donations.filter((d): d is NonNullable<typeof d> => d !== null);
+    const { written, unmatched, warnings } = await writeOnpayConversions(
+      connection.owner_id,
+      mapped,
+      admin,
+    );
+
+    await recordSync(connection.id, { rows: written }, admin);
+
+    return {
+      ok: true,
+      rows: written,
+      warnings,
+      more: false,
+      message: unmatched > 0
+        ? `${written} derma Onpay ditulis, ${unmatched} tiada padanan iklan.`
+        : `${written} derma Onpay ditulis.`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Penyegerakan Onpay gagal.';
+    await recordSync(
+      connection.id,
+      { rows: 0, error: message, needsReauth: needsReauth(error) },
+      admin,
+    );
+    return { ok: false, message, warnings: [], rows: 0, more: true };
+  }
 }

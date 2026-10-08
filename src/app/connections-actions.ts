@@ -3,11 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { requireUser } from '@/lib/auth/session';
 import {
-  deleteConnection, linkCampaign, listCampaignSources, unlinkCampaign,
+  deleteConnection, linkCampaign, listCampaignSources, listConnections, unlinkCampaign,
 } from '@/lib/db/connections';
-import { syncSource } from '@/lib/connections/sync';
+import { syncOnpay, syncSource } from '@/lib/connections/sync';
 import { getCampaign } from '@/lib/db/queries';
-import { importGoogleAdsDirectConnection, importSystemUserConnection } from './api/connect/_import';
+import { importGoogleAdsDirectConnection, importOnpayConnection, importSystemUserConnection } from './api/connect/_import';
 
 export interface ConnectionResult {
   ok: boolean;
@@ -188,5 +188,49 @@ export async function importGoogleAdsDirectAction(
     };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : 'Import gagal.' };
+  }
+}
+
+/**
+ * Same shortcut, for Onpay: an account-wide API token pasted into ONPAY_TOKEN.
+ * Never linked to the one campaign the button happened to be clicked from —
+ * Onpay donations are routed by ad-code match, not by workspace.
+ */
+export async function importOnpayAction(
+  _prev: ConnectionResult | null,
+  _formData: FormData,
+): Promise<ConnectionResult> {
+  const user = await requireUser();
+
+  try {
+    const { account } = await importOnpayConnection({ userId: user.id });
+    revalidatePath('/', 'layout');
+    return { ok: true, message: `Akaun Onpay ${account} disambungkan.` };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Import gagal.' };
+  }
+}
+
+/**
+ * Pulls Onpay's own sales list and routes every donation to whichever
+ * workspace's creative its ad code matches. Unlike syncCampaignAction this
+ * does not take a campaign_id — there is exactly one Onpay connection per
+ * account, not one per workspace.
+ */
+export async function syncOnpayAction(
+  _prev: ConnectionResult | null,
+  _formData: FormData,
+): Promise<ConnectionResult> {
+  try {
+    await requireUser();
+    const connections = await listConnections();
+    const connection = connections.find((c) => c.platform === 'onpay');
+    if (!connection) return { ok: false, message: 'Onpay belum disambungkan.' };
+
+    const outcome = await syncOnpay(connection);
+    revalidatePath('/', 'layout');
+    return { ok: outcome.ok, message: outcome.message, warnings: outcome.warnings };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : 'Penyegerakan gagal.' };
   }
 }

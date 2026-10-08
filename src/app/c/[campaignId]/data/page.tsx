@@ -1,15 +1,16 @@
 import { getBenchmarks, getCampaign, listBatches, listSnapshots } from '@/lib/db/queries';
 import { listCampaignSources, listConnections } from '@/lib/db/connections';
-import { googleAdsDirectConfig, platformStatus, systemUserConfig } from '@/lib/connections/config';
+import { googleAdsDirectConfig, onpayConfig, platformStatus, systemUserConfig } from '@/lib/connections/config';
 import { load } from '@/lib/db/safe';
 import { SetupNotice } from '@/components/SetupNotice';
 import { RollbackList } from '@/components/data/RollbackList';
 import { BenchmarkForm } from '@/components/data/BenchmarkForm';
 import {
-  ConnectButtons, ConnectFeedback, ImportGoogleAdsDirectButton, ImportSystemUserButton,
-  LastSyncLine, LinkedSources, SyncButton,
+  ConnectButtons, ConnectFeedback, ImportGoogleAdsDirectButton, ImportOnpayButton,
+  ImportSystemUserButton, LastSyncLine, LinkedSources, SyncButton, SyncOnpayButton,
 } from '@/components/data/ConnectionsPanel';
 import { Card, CardHeader, SectionTitle, Badge } from '@/components/ui/primitives';
+import { Notice } from '@/components/ui/Notice';
 import { dateTime } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -67,6 +68,7 @@ export default async function DataPage({
   const statuses = [platformStatus('meta'), platformStatus('google_ads')];
   const connectOk = typeof query.connect_ok === 'string' ? query.connect_ok : undefined;
   const connectError = typeof query.connect_error === 'string' ? query.connect_error : undefined;
+  const onpayConnection = connections.find((connection) => connection.platform === 'onpay') ?? null;
 
   return (
     <div className="space-y-6">
@@ -93,6 +95,49 @@ export default async function DataPage({
                 <LastSyncLine connections={connections} />
               </div>
             ) : null}
+          </div>
+        </Card>
+      </section>
+
+      <section>
+        <SectionTitle>Derma (Onpay)</SectionTitle>
+        <Card>
+          <CardHeader
+            title="Satu sambungan untuk seluruh akaun"
+            subtitle="Bukan ikut workspace — setiap derma disalurkan automatik ke kempen yang kod iklannya padan, merentas semua workspace."
+          />
+          <div className="space-y-4 px-5 pb-4">
+            {onpayConnection ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-3.5 py-2.5">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-[12px] font-medium">
+                    {onpayConnection.account_name ?? onpayConnection.external_account_id}
+                    <Badge tone="neutral">Onpay</Badge>
+                    {onpayConnection.status === 'needs_reauth' ? (
+                      <Badge tone="critical" icon={<span aria-hidden>!</span>}>Perlu sambung semula</Badge>
+                    ) : null}
+                  </div>
+                  {onpayConnection.last_sync_at ? (
+                    <p className="text-[11px] text-ink-muted">
+                      Segerak terakhir: {dateTime(onpayConnection.last_sync_at)}
+                      {typeof onpayConnection.last_sync_rows === 'number'
+                        ? ` (${onpayConnection.last_sync_rows} derma)`
+                        : ''}
+                    </p>
+                  ) : null}
+                  {onpayConnection.last_sync_error ? (
+                    <p className="text-[11px] text-critical">{onpayConnection.last_sync_error}</p>
+                  ) : null}
+                </div>
+                <SyncOnpayButton />
+              </div>
+            ) : onpayConfig().token !== '' ? (
+              <ImportOnpayButton />
+            ) : (
+              <Notice tone="info" title="Onpay belum boleh disambung">
+                Env yang belum diisi: <code className="rounded bg-surface-2 px-1">ONPAY_ACCOUNT, ONPAY_TOKEN</code>
+              </Notice>
+            )}
           </div>
         </Card>
       </section>

@@ -1,0 +1,125 @@
+import { fetchWithTimeout, PlatformError, readJson } from './http';
+
+/**
+ * Onpay, read-only.
+ *
+ * RPC-style rather than REST: every call is a GET/POST to
+ * `https://{account}.onpay.my/api/v1/{family}.{method}`, authenticated with a
+ * `token` query parameter (no header scheme, no OAuth), and every response —
+ * success or failure — comes back as HTTP 200 with its own `ok` boolean.
+ * https://onpaysb.github.io/docs/developer/api-v1.html
+ */
+
+function baseUrl(account: string): string {
+  return `https://${account}.onpay.my/api/v1`;
+}
+
+interface OnpayEnvelope {
+  ok: boolean;
+  message?: string;
+}
+
+async function call<T extends OnpayEnvelope>(
+  account: string,
+  method: string,
+  params: Record<string, string>,
+): Promise<T> {
+  const url = new URL(`${baseUrl(account)}/${method}`);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+
+  const response = await fetchWithTimeout(url, { cache: 'no-store' }, 'Onpay');
+  const parsed = await readJson<T>(response, 'Onpay');
+
+  // The account itself decides success here, independent of HTTP status —
+  // a bad token still comes back 200 with ok:false.
+  if (!parsed.ok) {
+    throw new PlatformError(parsed.message ?? 'Onpay menolak permintaan ini.', {
+      status: response.status,
+      needsReauth: /token/i.test(parsed.message ?? ''),
+    });
+  }
+  return parsed;
+}
+
+/**
+ * One row from `sales.list` / `sales.get`. Onpay's own docs show every field
+ * as an unexpanded `{...}` placeholder — this is only what a real response
+ * actually returned, not a guess from documentation.
+ */
+export interface OnpaySale {
+  id: number;
+  type: string;
+  total_amount: string;
+  confirmed_at: string | null;
+  created_at: string;
+  extra_field_1: string;
+  extra_field_2: string;
+  extra_field_3: string;
+}
+
+interface SalesListResponse extends OnpayEnvelope {
+  record_count: number;
+  per_page: number;
+  sales: OnpaySale[];
+}
+
+export async function fetchOnpaySalesPage(options: {
+  account: string;
+  token: string;
+  page: number;
+  perPage?: number;
+}): Promise<{ sales: OnpaySale[]; recordCount: number }> {
+  const parsed = await call<SalesListResponse>(options.account, 'sales.list', {
+    token: options.token,
+    page: String(options.page),
+    per_page: String(options.perPage ?? 100),
+    sort_column: 'created_at',
+    sort_dir: 'desc',
+  });
+  return { sales: parsed.sales ?? [], recordCount: parsed.record_count ?? 0 };
+}
+
+export interface OnpayDonation {
+  /** `onpay_<id>` — the exact dedupe_key shape donations have carried since
+   *  the agent that used to submit these by hand, so a sale either system
+   *  has already written lands on the same row instead of a duplicate. */
+  externalId: string;
+  occurredAt: string;
+  amount: number;
+  channel: string | null;
+  attributionRaw: string | null;
+  adNameHint: string | null;
+}
+
+/**
+ * `extra_field_3` carries the tracking code a landing page attached to the
+ * order, pipe-separated with a middle segment that is usually empty — e.g.
+ * `"W4L |  | tankgaza V3H1"`. The last non-empty segment is the ad name
+ * (campaign shorthand and all) exactly as the agent used to report it, so it
+ * still needs matching against a synced creative — never assumed correct on
+ * its own.
+ *
+ * Only a confirmed `donation` sale is a real, counted donation: Onpay forms
+ * can sell ordinary products too, and an unconfirmed sale has no payment
+ * behind it yet.
+ */
+export function mapOnpaySale(sale: OnpaySale): OnpayDonation | null {
+  if (sale.type !== 'donation' || !sale.confirmed_at) return null;
+
+  const amount = Number.parseFloat(sale.total_amount);
+  if (!Number.isFinite(amount)) return null;
+
+  const segments = (sale.extra_field_3 ?? '')
+    .split('|')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  return {
+    externalId: `onpay_${sale.id}`,
+    occurredAt: sale.confirmed_at,
+    amount,
+    channel: sale.extra_field_2?.trim() || null,
+    attributionRaw: sale.extra_field_3?.trim() || null,
+    adNameHint: segments.length > 0 ? segments[segments.length - 1] : null,
+  };
+}

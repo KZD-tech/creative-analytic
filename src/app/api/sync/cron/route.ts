@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { timingSafeEqual } from 'node:crypto';
 import { adminDb } from '@/lib/db/client';
-import { syncSource } from '@/lib/connections/sync';
-import type { CampaignSource } from '@/lib/db/connections';
+import { syncOnpay, syncSource } from '@/lib/connections/sync';
+import type { AdConnection, CampaignSource } from '@/lib/db/connections';
 
 export const dynamic = 'force-dynamic';
 // One connection budgets 45s for itself (see BUDGET_MS in lib/connections/sync.ts),
@@ -56,6 +56,27 @@ export async function GET(request: NextRequest) {
     const outcome = await syncSource(source, undefined, true);
     results.push({
       campaign: source.campaign_id,
+      ok: outcome.ok,
+      rows: outcome.rows,
+      more: outcome.more,
+      message: outcome.message,
+    });
+  }
+
+  // Onpay has no campaign_sources row — one connection per account, not one
+  // per workspace — so it is synced here directly rather than picked up by
+  // the loop above.
+  const { data: onpayRows, error: onpayError } = await supabase
+    .from('ad_connections')
+    .select('*')
+    .eq('platform', 'onpay')
+    .neq('status', 'disabled');
+  if (onpayError) return NextResponse.json({ error: onpayError.message }, { status: 500 });
+
+  for (const connection of (onpayRows ?? []) as unknown as AdConnection[]) {
+    const outcome = await syncOnpay(connection, true);
+    results.push({
+      campaign: `onpay:${connection.external_account_id}`,
       ok: outcome.ok,
       rows: outcome.rows,
       more: outcome.more,

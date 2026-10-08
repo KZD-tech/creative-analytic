@@ -2,11 +2,12 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { encryptionConfigured } from './crypto';
 import { siteUrl } from '@/lib/env';
 
-export type Platform = 'meta' | 'google_ads';
+export type Platform = 'meta' | 'google_ads' | 'onpay';
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
   meta: 'Meta Ads',
   google_ads: 'Google Ads',
+  onpay: 'Onpay',
 };
 
 export interface PlatformStatus {
@@ -88,7 +89,11 @@ export function systemUserConfig(): { token: string; accountIds: string[] } {
   };
 }
 
-export function platformStatus(platform: Platform): PlatformStatus {
+/**
+ * Only meant for the two OAuth platforms — Onpay has no consent screen to
+ * check readiness for, only a token either present or not.
+ */
+export function platformStatus(platform: 'meta' | 'google_ads'): PlatformStatus {
   const missing: string[] = [];
   if (!encryptionConfigured()) missing.push('TOKEN_ENCRYPTION_KEY');
 
@@ -104,6 +109,20 @@ export function platformStatus(platform: Platform): PlatformStatus {
   }
 
   return { platform, ready: missing.length === 0, missing };
+}
+
+/**
+ * The direct route for Onpay: an account-wide API token from Tetapan >
+ * Sistem > API & Webhook, pasted in once. Onpay has no OAuth of its own and
+ * no per-campaign concept — one token covers every donation across every
+ * workspace, routed by matching the ad code each sale's tracking field
+ * carries against creatives already synced from Meta or Google Ads.
+ */
+export function onpayConfig(): { account: string; token: string } {
+  return {
+    account: process.env.ONPAY_ACCOUNT?.trim() ?? '',
+    token: process.env.ONPAY_TOKEN?.trim() ?? '',
+  };
 }
 
 export function callbackUrl(platform: Platform): string {

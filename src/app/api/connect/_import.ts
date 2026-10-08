@@ -2,7 +2,7 @@ import 'server-only';
 import { describeMetaAdAccount, listMetaAdAccounts } from '@/lib/connections/meta';
 import { listGoogleAdsCustomers, refreshGoogleToken } from '@/lib/connections/googleAds';
 import {
-  googleAdsConfig, googleAdsDirectConfig, metaConfig, systemUserConfig,
+  googleAdsConfig, googleAdsDirectConfig, metaConfig, onpayConfig, systemUserConfig,
 } from '@/lib/connections/config';
 import { saveConnection, linkCampaign } from '@/lib/db/connections';
 import type { MetaAdAccount } from '@/lib/connections/meta';
@@ -106,4 +106,32 @@ export async function importGoogleAdsDirectConnection(input: {
   }
 
   return { imported: customers };
+}
+
+/**
+ * Turns an Onpay API token from the environment into a saved connection.
+ *
+ * Unlike Meta and Google Ads, this is never linked to the one campaign the
+ * button was clicked from — Onpay's sales list has no per-workspace concept,
+ * so the scheduled sync routes every donation to whichever workspace's
+ * creative its ad code actually matches, same account-wide connection either
+ * way.
+ */
+export async function importOnpayConnection(input: { userId: string }): Promise<{ account: string }> {
+  const { account, token } = onpayConfig();
+  if (!account) throw new Error('ONPAY_ACCOUNT belum diisi.');
+  if (!token) throw new Error('ONPAY_TOKEN belum diisi.');
+
+  await saveConnection({
+    ownerId: input.userId,
+    platform: 'onpay',
+    externalAccountId: account,
+    accountName: `Onpay ${account}`,
+    currency: null,
+    timezone: null,
+    accessToken: token,
+    expiresAt: null,
+  });
+
+  return { account };
 }

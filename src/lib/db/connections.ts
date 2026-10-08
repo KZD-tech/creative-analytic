@@ -5,6 +5,7 @@ import type { Platform } from '@/lib/connections/config';
 
 export interface AdConnection {
   id: string;
+  owner_id: string;
   platform: Platform;
   external_account_id: string;
   account_name: string | null;
@@ -21,7 +22,7 @@ export interface AdConnection {
 }
 
 /** Columns that are safe to hand to a page. Never the token columns. */
-const SAFE = `id, platform, external_account_id, account_name, currency, timezone,
+const SAFE = `id, owner_id, platform, external_account_id, account_name, currency, timezone,
   login_customer_id, status, last_sync_at, last_sync_error, last_sync_rows,
   synced_from, synced_through, created_at`;
 
