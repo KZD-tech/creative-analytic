@@ -126,6 +126,23 @@ export async function ensureCreatives(
 }
 
 /**
+ * Whether `adName` appears, campaign-shorthand-and-all, inside `hint` —
+ * tolerant of the " - " a media buyer uses to separate that shorthand from
+ * the ad code ("Silungai - V8H1" synced from the platform, reported back
+ * dash-free as "Silungai V8H1" by whatever reads the landing page's tracking
+ * field). A bare dash with no surrounding spaces is left untouched — "V1-H1"
+ * and "V1H1" are still different ads to a media buyer, same as `adNameKey`
+ * never touches that either. Without this, a real "Campaign - V8H1" creative
+ * failed this check on the dash alone, leaving a same-named-but-wrong ad on
+ * another platform as the only candidate left standing — confidently wrong
+ * rather than correctly ambiguous.
+ */
+export function hintContainsAdName(hint: string, adName: string): boolean {
+  const normalize = (s: string) => s.toLowerCase().replace(/\s+-\s+/g, ' ').replace(/\s+/g, ' ');
+  return normalize(hint).includes(normalize(adName));
+}
+
+/**
  * Donations arrive with an ad name an outside agent matched from Onpay, not
  * from the platform itself — an agent reading a UTM term routinely reports
  * "Silungai V8H1" for what Google Ads itself simply calls "V8H1", the
@@ -170,8 +187,7 @@ async function matchBySuffix(
     // what that would otherwise miss.
     if (synced.some((c) => adNameKey(c.ad_name) === key)) continue;
 
-    const lowerHint = hint.toLowerCase();
-    const candidates = synced.filter((c) => lowerHint.includes(c.ad_name.toLowerCase()));
+    const candidates = synced.filter((c) => hintContainsAdName(hint, c.ad_name));
     if (candidates.length === 1) result.set(key, candidates[0].id);
   }
 
@@ -212,8 +228,7 @@ export async function matchWithinCampaigns(
     const key = adNameKey(hint);
     if (!key) continue;
 
-    const lowerHint = hint.toLowerCase();
-    const matches = candidates.filter((c) => lowerHint.includes(c.ad_name.toLowerCase()));
+    const matches = candidates.filter((c) => hintContainsAdName(hint, c.ad_name));
     if (matches.length === 1) {
       result.set(key, { creativeId: matches[0].id, campaignId: matches[0].campaign_id });
     }
