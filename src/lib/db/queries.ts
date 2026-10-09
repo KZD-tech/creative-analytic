@@ -224,6 +224,51 @@ export async function getCreative(id: string): Promise<Creative | null> {
   return (data as Creative | null) ?? null;
 }
 
+export interface CreativeAttribution {
+  channel: string | null;
+  /** The exact tracking text Onpay sent on the donation (extra_field_3) — the "UTM" Onpay itself has. */
+  attributionRaw: string | null;
+  count: number;
+  amount: number;
+}
+
+/**
+ * Onpay has no UTM columns — `channel`/`attribution_raw` on a conversion are
+ * what it actually sends (extra_field_2/3), already carried along from
+ * `mapOnpaySale`. Grouped here by exact text so a creative that only ever
+ * shows one distinct tracking string says so, and one that shows several
+ * (different landing pages, a copy that changed mid-flight) shows each with
+ * its own count instead of one blended row.
+ */
+export async function getCreativeAttributions(
+  creativeId: string,
+  window: DateWindow,
+): Promise<CreativeAttribution[]> {
+  let query = (await db())
+    .from('conversions')
+    .select('channel, attribution_raw, amount')
+    .eq('creative_id', creativeId)
+    .not('attribution_raw', 'is', null);
+  if (window.from) query = query.gte('occurred_at', window.from);
+  if (window.to) query = query.lte('occurred_at', window.to);
+
+  const { data, error } = await query.limit(2000);
+  guard(error);
+
+  const map = new Map<string, CreativeAttribution>();
+  for (const row of (data ?? []) as { channel: string | null; attribution_raw: string | null; amount: number }[]) {
+    const key = `${row.channel ?? ''}\u0000${row.attribution_raw ?? ''}`;
+    const current = map.get(key);
+    if (current) {
+      current.count += 1;
+      current.amount += row.amount;
+    } else {
+      map.set(key, { channel: row.channel, attributionRaw: row.attribution_raw, count: 1, amount: row.amount });
+    }
+  }
+  return [...map.values()].sort((a, z) => z.count - a.count).slice(0, 8);
+}
+
 // ── tags ────────────────────────────────────────────────────────────────────
 
 export async function listTags(campaignId: string): Promise<Tag[]> {

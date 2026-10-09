@@ -5,6 +5,7 @@ import {
   getBenchmarks,
   getCampaign,
   getCreative,
+  getCreativeAttributions,
   getCreativeDailySeries,
   getPerformance,
   getTagAssignments,
@@ -46,20 +47,21 @@ export default async function CreativeDetailPage({
     if (!campaign) return null;
     if (!creative || creative.campaign_id !== campaignId) notFound();
 
-    const [performance, benchmarks, daily, tags, tagMap] = await Promise.all([
+    const [performance, benchmarks, daily, tags, tagMap, attributions] = await Promise.all([
       getPerformance(campaignId, window),
       getBenchmarks(campaignId),
       getCreativeDailySeries(creativeId, window),
       listTags(campaignId),
       getTagAssignments(campaignId),
+      getCreativeAttributions(creativeId, window),
     ]);
-    return { campaign, creative, performance, benchmarks, daily, tags, tagMap };
+    return { campaign, creative, performance, benchmarks, daily, tags, tagMap, attributions };
   });
 
   if (!loaded.ok) return <SetupNotice error={loaded.error} />;
   if (!loaded.data) return null;
 
-  const { campaign, creative, performance, benchmarks, daily, tags, tagMap } = loaded.data;
+  const { campaign, creative, performance, benchmarks, daily, tags, tagMap, attributions } = loaded.data;
 
   const row = performance.find((item) => item.creative_id === creativeId);
   const currency = campaign.currency;
@@ -215,6 +217,35 @@ export default async function CreativeDetailPage({
               <Metric label="Purata derma" value={money(metrics.aov, currency)} />
               <Metric label="CPC (link)" value={money(metrics.cpc, currency, 2)} />
             </dl>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Rujukan tracking Onpay"
+              subtitle="Kod tracking (extra_field_3) dan saluran (extra_field_2) sebenar yang dihantar Onpay bagi derma yang padan ke kreatif ini."
+            />
+            {attributions.length === 0 ? (
+              <p className="px-5 pb-4 text-[12px] text-ink-muted">
+                Tiada derma Onpay berjejak ke kreatif ini dalam julat tarikh ini.
+              </p>
+            ) : (
+              <ul className="divide-y divide-line px-5 pb-4">
+                {attributions.map((a, i) => (
+                  <li key={i} className="flex items-center justify-between gap-3 py-2 text-[12px]">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-ink" title={a.attributionRaw ?? undefined}>
+                        {a.attributionRaw ?? '—'}
+                      </p>
+                      <p className="text-[11px] text-ink-muted">{a.channel ?? 'Saluran tidak diketahui'}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="tnum font-semibold text-ink">{money(a.amount, currency)}</p>
+                      <p className="text-[11px] text-ink-muted">{num(a.count)} derma</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
 
           <FatigueChart rows={daily} />
