@@ -934,6 +934,7 @@ export async function writeOnpayConversions(
         amount: item.amount,
         channel: item.channel,
         attribution_raw: item.attributionRaw,
+        invoice_number: item.invoiceNumber,
         matched_ad_name: item.adNameHint,
         match_method: 'fuzzy',
         source: 'api',
