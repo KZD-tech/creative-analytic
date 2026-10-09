@@ -895,7 +895,17 @@ export async function writeOnpayConversions(
     return null;
   }
 
-  const named = items.filter((i) => i.adNameHint);
+  // CRM is a real Onpay form prefix, but a CRM donation is not a click on any
+  // ad — there is no creative for it to belong to, and matching it anyway
+  // (nothing stops it falling into the unrestricted whole-account fallback,
+  // same path that put Meta donations on a stale Google ad) would only risk
+  // attaching it to one by coincidence. Excluded outright, not counted as
+  // unmatched — this is not a matching failure, it was never meant to match.
+  const crmExcluded = items.filter((i) => i.invoiceNumber?.trim().toUpperCase().startsWith('CRM')).length;
+
+  const named = items.filter(
+    (i) => i.adNameHint && !i.invoiceNumber?.trim().toUpperCase().startsWith('CRM'),
+  );
   const byPrefix = new Map<string | null, OnpayDonationInput[]>();
   for (const item of named) {
     const prefix = prefixFor(item.invoiceNumber);
@@ -956,6 +966,9 @@ export async function writeOnpayConversions(
   }
 
   const warnings: string[] = [];
+  if (crmExcluded > 0) {
+    warnings.push(`${crmExcluded} derma CRM diabaikan — bukan daripada klik iklan.`);
+  }
   if (unmatched > 0) {
     const sample = [...unmatchedNames]
       .slice(0, 5)
