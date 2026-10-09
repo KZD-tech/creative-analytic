@@ -49,6 +49,8 @@ async function call<T extends OnpayEnvelope>(
 export interface OnpaySale {
   id: number;
   type: string;
+  /** `1` = dibayar, `0` = belum bayar. Binari sahaja — tiada status lain. */
+  status: number;
   total_amount: string;
   confirmed_at: string | null;
   created_at: string;
@@ -104,12 +106,15 @@ export interface OnpayDonation {
  * still needs matching against a synced creative — never assumed correct on
  * its own.
  *
- * Only a confirmed `donation` sale is a real, counted donation: Onpay forms
- * can sell ordinary products too, and an unconfirmed sale has no payment
- * behind it yet.
+ * Only a `donation` sale with `status === 1` is a real, paid donation: Onpay
+ * forms can sell ordinary products too, and `confirmed_at` is **not** a paid
+ * signal — it is set (and keeps changing) whenever Onpay re-checks the order,
+ * including ones still sitting at `status: 0` days later. A real sample of
+ * each confirmed this: a status:0 row carried a confirmed_at timestamp from
+ * over a week after it was created, with payment_gateway_log.state: "due".
  */
 export function mapOnpaySale(sale: OnpaySale): OnpayDonation | null {
-  if (sale.type !== 'donation' || !sale.confirmed_at) return null;
+  if (sale.type !== 'donation' || sale.status !== 1) return null;
 
   const amount = Number.parseFloat(sale.total_amount);
   if (!Number.isFinite(amount)) return null;
@@ -121,7 +126,10 @@ export function mapOnpaySale(sale: OnpaySale): OnpayDonation | null {
 
   return {
     externalId: `onpay_${sale.id}`,
-    occurredAt: sale.confirmed_at,
+    // confirmed_at tracks closely with the actual payment moment for a paid
+    // sale (seconds apart from payment_gateway_log.paid_at in every sample
+    // seen) — created_at is the fallback for the rare paid row missing it.
+    occurredAt: sale.confirmed_at ?? sale.created_at,
     amount,
     channel: sale.extra_field_2?.trim() || null,
     attributionRaw: sale.extra_field_3?.trim() || null,

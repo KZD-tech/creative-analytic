@@ -7,6 +7,7 @@ test.afterEach(() => mock.restoreAll());
 const baseSale: OnpaySale = {
   id: 347557,
   type: 'donation',
+  status: 1,
   total_amount: '50.00',
   confirmed_at: '2026-10-08T20:20:01+08:00',
   created_at: '2026-10-08T20:17:26+08:00',
@@ -32,8 +33,18 @@ test('a sale that is not type "donation" is dropped — this account also sells 
   assert.equal(mapOnpaySale({ ...baseSale, type: 'product' }), null);
 });
 
-test('an unconfirmed sale (no payment behind it yet) is dropped', () => {
-  assert.equal(mapOnpaySale({ ...baseSale, confirmed_at: null }), null);
+test('a sale with status 0 (not yet paid) is dropped — confirmed_at alone is not a paid signal', () => {
+  assert.equal(mapOnpaySale({ ...baseSale, status: 0 }), null);
+});
+
+test('status 0 is dropped even when confirmed_at is set, as real pending rows do carry one', () => {
+  assert.equal(mapOnpaySale({ ...baseSale, status: 0, confirmed_at: '2026-10-08T14:04:52+08:00' }), null);
+});
+
+test('a paid sale missing confirmed_at falls back to created_at for occurredAt', () => {
+  const donation = mapOnpaySale({ ...baseSale, confirmed_at: null });
+  assert.ok(donation);
+  assert.equal(donation.occurredAt, baseSale.created_at);
 });
 
 test('a sale with no tracking field has no ad name hint, not a crash', () => {
